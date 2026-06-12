@@ -57,26 +57,29 @@ class ProcessAgentWorkflowJob implements ShouldQueue
          */
         $targetType = "App\\Models\\{$this->payload->targetType}";
 
-        $aiJobRecord = AiJob::updateOrCreate(
-            // Attributes to find the record (Search Criteria)
+        $targetType = "App\\Models\\{$this->payload->targetType}";
+
+        // We use firstOrCreate so we don't overwrite job_uuid on retries.
+        // We will update the status later down.
+        $aiJobRecord = AiJob::firstOrCreate(
             [
                 'tenant_id' => $this->tenantId,
                 'agent_slug' => $this->payload->context['agent_config']['slug'],
                 'target_id' => $this->payload->targetId,
                 'target_type' => $targetType,
             ],
-            // Attributes to set/update
             [
                 'status' => 'pending',
                 'payload' => array_merge(
-                    keys_except($this->payload->toArray(), ['context.agent_config.api_key', 'tool_configs']),
+                    $this->payload->toArray(),
                     ['debounce_session_key' => $this->payload->getTempValue('debounce_session_key')]
                 ),
                 'error_message' => null,
-                'job_uuid' => (string) Str::uuid(), // Note: see 'UUID optimization' below
+                'job_uuid' => (string) Str::uuid(), // Only set on creation
                 'attempts' => 0,
             ]
         );
+
 
         // $targetType = 'App\\Models\\' . $this->payload->targetType;
 
@@ -110,28 +113,39 @@ class ProcessAgentWorkflowJob implements ShouldQueue
 
         /**
          * ------------------------------------------------------
-         * PRE-FLIGHT CHECK: Verify Sidecar Health
+         * SECURITY: JIT CREDENTIAL FETCHING (Zero-Trust Queueing)
          * ------------------------------------------------------
+         * Fetch credentials right before execution so they never rest in the Queue.
          */
-        $isHealthy = Cache::remember('sidecar_health', 120, function () {
-            try {
-                $response = Http::timeout(3)->get(config('services.mcp_sidecar.url').'/health');
+        $agent = \App\Models\AiAgent::where('tenant_id', $this->tenantId)
+            ->where('slug', $this->payload->context['agent_config']['slug'])
+            ->first();
 
-                if (! $response->successful()) {
-                    return false;
-                }
-
-                return true;
-            } catch (\Exception $e) {
-                return false;
-            }
-        });
-
-        if (! $isHealthy) {
-            Log::warning('[ProcessAgentWorkflowJob]: Sidecar unavailable. Releasing back to queue.');
-
-            return $this->release(60); // Wait 1 minute and try again
+        if (!$agent || !$agent->integration?->value['api_key']) {
+            $aiJobRecord->update([
+                'status' => 'failed',
+                'error_message' => 'AI Job failed: Missing Agent or API Key at execution time.',
+            ]);
+            Log::error('[ProcessAgentWorkflowJob]: Missing Agent/API Key during execution.', ['slug' => $this->payload->context['agent_config']['slug']]);
+            return;
         }
+
+        // Inject sensitive data back into the payload dynamically
+        $context = $this->payload->context;
+        $context['agent_config']['api_key'] = $agent->integration->value['api_key'];
+        
+        $this->payload = new WorkflowPayload(
+            targetType: class_basename($targetType), // Keep basename
+            targetId: $this->payload->targetId,
+            context: $context,
+            goal: $this->payload->goal,
+            requiredTools: $this->payload->requiredTools,
+            handlerClass: $this->payload->handlerClass,
+            toolConfigs: $agent->tool_configs ?? [], // Inject tool secrets
+            tempValueContainer: $this->payload->getTempValue('debounce_session_key') 
+                ? ['debounce_session_key' => $this->payload->getTempValue('debounce_session_key')] 
+                : null
+        );
 
         /**
          * ------------------------------------------------------

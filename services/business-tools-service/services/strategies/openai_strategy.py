@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any, Optional
 from core.logger import mcp_logger
 from services.llm import stream_openai
 from services.strategies.base import LLMStrategy
@@ -9,7 +9,7 @@ class OpenAIStrategy(LLMStrategy):
     def __init__(self, max_iterations=30):
         self.max_iterations = max_iterations
 
-    async def run_stream(self, api_key: str, model: str, system_prompt: str, effective_history: list, full_user_message: str, tools: list, context: dict) -> AsyncGenerator[dict[str, Any], None]:
+    async def run_stream(self, api_key: str, model: str, system_prompt: str, effective_history: list, full_user_message: str, tools: list, context: dict, output_format: str = 'text', thinking_budget: Optional[int] = None, use_stream: bool = True, max_iterations: int = 7) -> AsyncGenerator[dict[str, Any], None]:
         messages = []
         for msg in effective_history:
             if msg["role"] == "system":
@@ -23,7 +23,7 @@ class OpenAIStrategy(LLMStrategy):
         
         iteration = 0
         
-        while iteration < self.max_iterations:
+        while iteration < max_iterations:
             iteration += 1
             try:
                 stream = await stream_openai(api_key, model, system_prompt, messages, tools)
@@ -93,5 +93,5 @@ class OpenAIStrategy(LLMStrategy):
                         continue
                 return
 
-        if iteration >= self.max_iterations:
+        if iteration >= max_iterations:
             yield {"type": "error", "data": "Max iterations reached (OpenAI Loop)."}

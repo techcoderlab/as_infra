@@ -21,7 +21,7 @@ class GeminiStrategy(LLMStrategy):
     def __init__(self, max_iterations=30):
         self.max_iterations = max_iterations
 
-    async def run_stream(self, api_key: str, model: str, system_prompt: str, effective_history: list, full_user_message: str, tools: list, context: dict, output_format: str = 'text', thinking_budget: Optional[int] = None) -> AsyncGenerator[dict[str, Any], None]:
+    async def run_stream(self, api_key: str, model: str, system_prompt: str, effective_history: list, full_user_message: str, tools: list, context: dict, output_format: str = 'text', thinking_budget: Optional[int] = None, use_stream: bool = True, max_iterations: int = 7) -> AsyncGenerator[dict[str, Any], None]:
         chat = await stream_gemini(
             api_key,
             model,
@@ -35,21 +35,37 @@ class GeminiStrategy(LLMStrategy):
         current_input = full_user_message
         iteration = 0
         
-        while iteration < self.max_iterations:
+        while iteration < max_iterations:
             iteration += 1
             try:
-                response_stream = await chat.send_message_stream(message=current_input)
-                
                 function_calls = []
-                async for chunk in response_stream:
+                
+                if use_stream:
+                    response_stream = await chat.send_message_stream(message=current_input)
+                    async for chunk in response_stream:
+                        try:
+                            if chunk.text:
+                                yield {"type": "token", "data": chunk.text}
+                        except ValueError:
+                            pass
+                        
+                        if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
+                            for part in chunk.candidates[0].content.parts:
+                                if fn := part.function_call:
+                                    args = fn.args
+                                    if hasattr(args, "to_dict"):
+                                        args = args.to_dict()
+                                    function_calls.append({"name": fn.name, "args": args})
+                else:
+                    response = await chat.send_message(message=current_input)
                     try:
-                        if chunk.text:
-                            yield {"type": "token", "data": chunk.text}
+                        if response.text:
+                            yield {"type": "token", "data": response.text}
                     except ValueError:
                         pass
-                    
-                    if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
-                        for part in chunk.candidates[0].content.parts:
+                        
+                    if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                        for part in response.candidates[0].content.parts:
                             if fn := part.function_call:
                                 args = fn.args
                                 if hasattr(args, "to_dict"):
@@ -93,7 +109,7 @@ class GeminiStrategy(LLMStrategy):
                         continue
                 return
 
-        if iteration >= self.max_iterations:
+        if iteration >= max_iterations:
             yield {"type": "error", "data": "Max iterations reached (Gemini Loop)."}
 
     # async def run(self, prompt: str, use_cache: bool = True, **kwargs) -> str:

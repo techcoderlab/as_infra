@@ -67,11 +67,22 @@ class WebhookCallbackService:
         Raises:
             ValueError: If the URL's domain is not in the allowlist.
         """
-        if not self._allowed_domains:
-            return  # Allow all when no allowlist configured
-
         parsed = urlparse(str(url))
         domain = parsed.hostname or ""
+
+        # P2 SECURITY: Absolute blocklist for critical SSRF vectors (Cloud Metadata)
+        # These are blocked regardless of allowlist configurations.
+        forbidden_domains = {
+            "169.254.169.254",          # AWS / GCP / Azure IMDS
+            "metadata.google.internal", # GCP Metadata
+            "169.254.169.253",          # AWS DNS
+        }
+        
+        if domain.lower() in forbidden_domains:
+            raise ValueError(f"SSRF Prevention: Callback domain '{domain}' is strictly forbidden.")
+
+        if not self._allowed_domains:
+            return  # Allow all (except forbidden) when no allowlist configured
 
         if domain.lower() not in self._allowed_domains:
             raise ValueError(

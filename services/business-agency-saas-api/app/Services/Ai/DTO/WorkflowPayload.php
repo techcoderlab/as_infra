@@ -97,13 +97,15 @@ class WorkflowPayload implements Arrayable
                     'provider' => $agent->brain,
                     'model' => $agent->model,
                     'system_prompt' => $agent->system_prompt,
-                    'api_key' => $agent->integration->value['api_key'],
+                    // SECURITY FIX: api_key is intentionally excluded here to prevent Queue Leakage.
+                    // It will be injected Just-In-Time by the ProcessAgentWorkflowJob.
                 ],
             ],
             goal: $goal,
             requiredTools: $agent->tools ?? [],
             handlerClass: $agent->handler_class,
-            toolConfigs: $agent->tool_configs ?? []
+            // SECURITY FIX: tool_configs is intentionally excluded here to prevent Queue Leakage.
+            toolConfigs: []
         );
     }
 
