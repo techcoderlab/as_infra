@@ -1,0 +1,38 @@
+{
+    "stats": {
+        "overview": {
+            "total_leads": 1250,
+            "new_leads": 45,
+            "hot_leads": 12,
+            "conversion_rate": 8.5,
+            "stale_leads": 5
+        },
+        "growth": {
+            "this_month": 150,
+            "last_month": 120,
+            "percentage": 25.0
+        },
+        "chart_data": {
+            "2026-01-19": 12,
+            "2026-01-20": 15,
+            "2026-01-21": 8,
+            "2026-01-22": 20,
+            "2026-01-23": 18,
+            "2026-01-24": 22,
+            "2026-01-25": 10
+        },
+        "top_sources": [
+            { "source": "Facebook Ads", "count": 450 },
+            { "source": "Google Search", "count": 320 }
+        ],
+        "leads_search_filters": {
+            "temperatures": ["cold", "warm", "hot"],
+            "sources": ["Facebook Ads", "Google Search", "Referral"]
+        }
+    },
+    "config": {
+        "entity_name_singular": "Lead",
+        "entity_name_plural": "Leads",
+        "statuses": [{ "slug": "new", "label": "New", "color": "blue" }]
+    }
+}

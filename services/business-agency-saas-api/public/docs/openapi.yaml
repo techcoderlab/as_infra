@@ -1,0 +1,2379 @@
+openapi: 3.0.3
+info:
+  title: 'Laravel API Documentation'
+  description: ''
+  version: 1.0.0
+servers:
+  -
+    url: 'http://localhost'
+tags:
+  -
+    name: Endpoints
+    description: ''
+  -
+    name: 'Lead Management'
+    description: "\nAPI Endpoints for managing leads, including creation, retrieval, updates, and exports.\nAll endpoints are scoped to the authenticated user's current tenant."
+components:
+  securitySchemes:
+    default:
+      type: http
+      scheme: bearer
+      description: 'You can retrieve your token by visiting your dashboard and clicking <b>Generate API token</b>.'
+security:
+  -
+    default: []
+paths:
+  /api/login:
+    post:
+      summary: ''
+      operationId: postApiLogin
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address.'
+                  example: gbailey@example.net
+                password:
+                  type: string
+                  description: ''
+                  example: '|]|{+-'
+              required:
+                - email
+                - password
+  /api/register:
+    post:
+      summary: ''
+      operationId: postApiRegister
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                tenant_domain:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: 'n'
+                  nullable: true
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: g
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: rowan.gulgowski@example.com
+                password:
+                  type: string
+                  description: 'Must be at least 8 characters.'
+                  example: 'BNvYgxwmi/#iw/kX'
+              required:
+                - tenant_name
+                - name
+                - email
+                - password
+  /api/ai-settings:
+    post:
+      summary: ''
+      operationId: postApiAiSettings
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ai_provider_default:
+                  type: string
+                  description: ''
+                  example: gemini
+                  enum:
+                    - openai
+                    - gemini
+              required:
+                - ai_provider_default
+  /api/integrations:
+    post:
+      summary: "POST /api/integrations\nSecurely store the keys."
+      operationId: pOSTapiintegrationsSecurelyStoreTheKeys
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                service:
+                  type: string
+                  description: ''
+                  example: architecto
+                value:
+                  type: object
+                  description: ''
+                  example: []
+                  properties: {  }
+                key:
+                  type: string
+                  description: "Ensure 'value' is an array from frontend."
+                  example: architecto
+                  nullable: true
+                is_active:
+                  type: boolean
+                  description: ''
+                  example: false
+                is_brain:
+                  type: boolean
+                  description: ''
+                  example: false
+              required:
+                - service
+                - value
+                - is_active
+                - is_brain
+  '/api/integrations/{id}':
+    put:
+      summary: ''
+      operationId: putApiIntegrationsId
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                service:
+                  type: string
+                  description: ''
+                  example: architecto
+                value:
+                  type: object
+                  description: ''
+                  example: []
+                  properties: {  }
+                key:
+                  type: string
+                  description: "Ensure 'value' is an array from frontend."
+                  example: architecto
+                  nullable: true
+                is_active:
+                  type: boolean
+                  description: ''
+                  example: false
+                is_brain:
+                  type: boolean
+                  description: ''
+                  example: true
+              required:
+                - service
+                - value
+                - is_active
+                - is_brain
+    delete:
+      summary: 'DELETE /api/integrations/{id}'
+      operationId: dELETEapiintegrationsid
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the integration.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+  /api/ai-agents:
+    post:
+      summary: 'Store a new agent.'
+      operationId: storeANewAgent
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                slug:
+                  type: string
+                  description: 'Ensure slug is unique per tenant. Must contain only letters, numbers, dashes and underscores. Must not be greater than 255 characters.'
+                  example: 'n'
+                brain:
+                  type: string
+                  description: ''
+                  example: architecto
+                model:
+                  type: string
+                  description: "The service key (e.g. 'openai')."
+                  example: architecto
+                system_prompt:
+                  type: string
+                  description: "e.g. 'gpt-4'."
+                  example: architecto
+                  nullable: true
+                user_prompt:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                tools:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+                  nullable: true
+                triggers:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+                  nullable: true
+                is_active:
+                  type: boolean
+                  description: 'Logic to save triggers handled below or via relationship.'
+                  example: true
+              required:
+                - name
+                - slug
+                - brain
+                - model
+  '/api/ai-agents/{id}':
+    put:
+      summary: 'Update an existing agent.'
+      operationId: updateAnExistingAgent
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                slug:
+                  type: string
+                  description: 'Must contain only letters, numbers, dashes and underscores. Must not be greater than 255 characters.'
+                  example: 'n'
+                brain:
+                  type: string
+                  description: ''
+                  example: architecto
+                model:
+                  type: string
+                  description: ''
+                  example: architecto
+                system_prompt:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                user_prompt:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                tools:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+                  nullable: true
+                triggers:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+                  nullable: true
+                is_active:
+                  type: boolean
+                  description: ''
+                  example: true
+    delete:
+      summary: 'Delete an agent.'
+      operationId: deleteAnAgent
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the ai agent.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+  /api/ai-agent/settings:
+    post:
+      summary: ''
+      operationId: postApiAiAgentSettings
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ai_provider_default:
+                  type: string
+                  description: ''
+                  example: gemini
+                  enum:
+                    - openai
+                    - gemini
+                    - claude
+              required:
+                - ai_provider_default
+  /api/tenants:
+    post:
+      summary: ''
+      operationId: postApiTenants
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                domain:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: 'n'
+                  nullable: true
+                status:
+                  type: string
+                  description: ''
+                  example: suspended
+                  enum:
+                    - active
+                    - suspended
+                  nullable: true
+                plan_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the plans table.'
+                  example: architecto
+                expires_at:
+                  type: string
+                  description: 'Must be a valid date.'
+                  example: '2026-01-25T17:18:15'
+                  nullable: true
+                crm_config:
+                  type: object
+                  description: ''
+                  example: null
+                  properties:
+                    entity_name_singular:
+                      type: string
+                      description: 'This field is required when <code>crm_config</code> is present.'
+                      example: architecto
+                    entity_name_plural:
+                      type: string
+                      description: 'This field is required when <code>crm_config</code> is present.'
+                      example: architecto
+                    statuses:
+                      type: array
+                      description: 'This field is required when <code>crm_config</code> is present. Must have at least 1 items.'
+                      example: null
+                      items:
+                        type: object
+                        properties:
+                          slug:
+                            type: string
+                            description: 'This field is required when <code>crm_config</code> is present.'
+                            example: architecto
+                          label:
+                            type: string
+                            description: 'This field is required when <code>crm_config</code> is present.'
+                            example: architecto
+                          color:
+                            type: string
+                            description: 'This field is required when <code>crm_config</code> is present.'
+                            example: architecto
+                  nullable: true
+              required:
+                - name
+                - plan_id
+  '/api/tenants/{tenant_id}':
+    patch:
+      summary: ''
+      operationId: patchApiTenantsTenant_id
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                domain:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: 'n'
+                  nullable: true
+                status:
+                  type: string
+                  description: ''
+                  example: active
+                  enum:
+                    - active
+                    - suspended
+                plan_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the plans table.'
+                  example: null
+                expires_at:
+                  type: string
+                  description: 'Must be a valid date.'
+                  example: '2026-01-25T17:18:15'
+                  nullable: true
+                crm_config:
+                  type: object
+                  description: ''
+                  example: null
+                  properties:
+                    entity_name_singular:
+                      type: string
+                      description: 'This field is required when <code>crm_config</code> is present.'
+                      example: architecto
+                    entity_name_plural:
+                      type: string
+                      description: 'This field is required when <code>crm_config</code> is present.'
+                      example: architecto
+                    statuses:
+                      type: array
+                      description: 'This field is required when <code>crm_config</code> is present. Must have at least 1 items.'
+                      example: null
+                      items:
+                        type: object
+                        properties:
+                          slug:
+                            type: string
+                            description: 'This field is required when <code>crm_config</code> is present.'
+                            example: architecto
+                          label:
+                            type: string
+                            description: 'This field is required when <code>crm_config</code> is present.'
+                            example: architecto
+                          color:
+                            type: string
+                            description: 'This field is required when <code>crm_config</code> is present.'
+                            example: architecto
+                  nullable: true
+    delete:
+      summary: ''
+      operationId: deleteApiTenantsTenant_id
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: tenant_id
+        description: 'The ID of the tenant.'
+        example: 16
+        required: true
+        schema:
+          type: integer
+  /api/tenants/crm-config:
+    post:
+      summary: ''
+      operationId: postApiTenantsCrmConfig
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entity_name_singular:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: b
+                entity_name_plural:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: 'n'
+                statuses:
+                  type: array
+                  description: 'Must have at least 1 items.'
+                  example:
+                    - []
+                  items:
+                    type: object
+                    properties:
+                      slug:
+                        type: string
+                        description: ''
+                        example: architecto
+                      label:
+                        type: string
+                        description: ''
+                        example: architecto
+                      color:
+                        type: string
+                        description: ''
+                        example: architecto
+                    required:
+                      - slug
+                      - label
+                      - color
+              required:
+                - entity_name_singular
+                - entity_name_plural
+                - statuses
+  /api/plans:
+    post:
+      summary: ''
+      operationId: postApiPlans
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: ''
+                  example: architecto
+                slug:
+                  type: string
+                  description: ''
+                  example: architecto
+                price:
+                  type: number
+                  description: ''
+                  example: 4326.41688
+                modules:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+              required:
+                - name
+                - slug
+  '/api/plans/{plan_id}':
+    put:
+      summary: ''
+      operationId: putApiPlansPlan_id
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: ''
+                  example: architecto
+                slug:
+                  type: string
+                  description: "Unique check must ignore the current plan's ID."
+                  example: null
+                price:
+                  type: number
+                  description: ''
+                  example: 4326.41688
+                modules:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+              required:
+                - name
+    delete:
+      summary: ''
+      operationId: deleteApiPlansPlan_id
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: plan_id
+        description: 'The ID of the plan.'
+        example: 16
+        required: true
+        schema:
+          type: integer
+  /api/modules:
+    post:
+      summary: ''
+      operationId: postApiModules
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+  '/api/tenants/{tenant_id}/assign-plan':
+    post:
+      summary: ''
+      operationId: postApiTenantsTenant_idAssignPlan
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the plans table.'
+                  example: architecto
+                expires_at:
+                  type: string
+                  description: 'Must be a valid date.'
+                  example: '2026-01-25T17:18:15'
+                  nullable: true
+              required:
+                - plan_id
+    parameters:
+      -
+        in: path
+        name: tenant_id
+        description: 'The ID of the tenant.'
+        example: 16
+        required: true
+        schema:
+          type: integer
+  /api/ai-chats:
+    post:
+      summary: ''
+      operationId: postApiAiChats
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                webhook_url:
+                  type: string
+                  description: 'Must be a valid URL.'
+                  example: 'http://bailey.com/'
+                  nullable: true
+                webhook_secret:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                welcome_message:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                ai_agent_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the ai_agents table.'
+                  example: null
+                  nullable: true
+              required:
+                - name
+  '/api/ai-chats/{id}':
+    put:
+      summary: ''
+      operationId: putApiAiChatsId
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                webhook_url:
+                  type: string
+                  description: 'Must be a valid URL.'
+                  example: 'http://bailey.com/'
+                  nullable: true
+                webhook_secret:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                welcome_message:
+                  type: string
+                  description: ''
+                  example: architecto
+                  nullable: true
+                ai_agent_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the ai_agents table.'
+                  example: null
+                  nullable: true
+              required:
+                - name
+    delete:
+      summary: ''
+      operationId: deleteApiAiChatsId
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the ai chat.'
+        example: 16
+        required: true
+        schema:
+          type: integer
+  '/api/ai-chats/{aiChat_id}/message':
+    post:
+      summary: ''
+      operationId: postApiAiChatsAiChat_idMessage
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text_content:
+                  type: string
+                  description: ''
+                  example: architecto
+              required:
+                - text_content
+    parameters:
+      -
+        in: path
+        name: aiChat_id
+        description: 'The ID of the aiChat.'
+        example: 16
+        required: true
+        schema:
+          type: integer
+  /api/forms:
+    post:
+      summary: ''
+      operationId: postApiForms
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                is_active:
+                  type: boolean
+                  description: ''
+                  example: false
+                schema:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+                  nullable: true
+                form_source:
+                  type: string
+                  description: 'Must not be greater than 20 characters.'
+                  example: ngzmiyvdljnikhwa
+                  enum:
+                    - system
+                    - tally
+                    - typeform
+                form_public_url:
+                  type: string
+                  description: 'Must be a valid URL. Must not be greater than 500 characters.'
+                  example: 'http://breitenberg.com/nostrum-aut-adipisci-quidem-nostrum.html'
+                  nullable: true
+                ref_form_id:
+                  type: string
+                  description: 'Must not be greater than 200 characters.'
+                  example: l
+                  nullable: true
+              required:
+                - name
+                - form_source
+  '/api/forms/{form_id}':
+    put:
+      summary: ''
+      operationId: putApiFormsForm_id
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                is_active:
+                  type: boolean
+                  description: ''
+                  example: false
+                schema:
+                  type: object
+                  description: ''
+                  example: null
+                  properties: {  }
+                  nullable: true
+                form_source:
+                  type: string
+                  description: 'Must not be greater than 20 characters.'
+                  example: ngzmiyvdljnikhwa
+                  enum:
+                    - system
+                    - tally
+                    - typeform
+                form_public_url:
+                  type: string
+                  description: 'Must be a valid URL. Must not be greater than 500 characters.'
+                  example: 'http://breitenberg.com/nostrum-aut-adipisci-quidem-nostrum.html'
+                  nullable: true
+                ref_form_id:
+                  type: string
+                  description: 'Must not be greater than 200 characters.'
+                  example: l
+                  nullable: true
+              required:
+                - form_source
+    delete:
+      summary: ''
+      operationId: deleteApiFormsForm_id
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: form_id
+        description: 'The ID of the form.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+  /api/webhooks:
+    post:
+      summary: ''
+      operationId: postApiWebhooks
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                  nullable: true
+                url:
+                  type: string
+                  description: 'Must be a valid URL.'
+                  example: 'http://bailey.com/'
+                secret:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: m
+                  nullable: true
+                form_id:
+                  type: string
+                  description: 'Validate form_id exists and belongs to the current tenant.'
+                  example: architecto
+                  nullable: true
+                events:
+                  type: array
+                  description: ''
+                  example:
+                    - architecto
+                  items:
+                    type: string
+              required:
+                - url
+  '/api/webhooks/{id}':
+    delete:
+      summary: ''
+      operationId: deleteApiWebhooksId
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the webhook.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+  /api/api-keys:
+    post:
+      summary: 'Create a new API key with specific permissions and expiry.'
+      operationId: createANewAPIKeyWithSpecificPermissionsAndExpiry
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                abilities:
+                  type: array
+                  description: ''
+                  example: null
+                  items:
+                    type: string
+                expiration_days:
+                  type: integer
+                  description: ''
+                  example: '90'
+                  enum:
+                    - '30'
+                    - '60'
+                    - '90'
+                  nullable: true
+              required:
+                - name
+  '/api/api-keys/{id}':
+    put:
+      summary: 'Update an existing API key (Rename, Scopes, or Expiry).'
+      operationId: updateAnExistingAPIKeyRenameScopesOrExpiry
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must not be greater than 255 characters.'
+                  example: b
+                abilities:
+                  type: array
+                  description: ''
+                  example: null
+                  items:
+                    type: string
+                expiration_days:
+                  type: integer
+                  description: ''
+                  example: '60'
+                  enum:
+                    - '30'
+                    - '60'
+                    - '90'
+                  nullable: true
+    delete:
+      summary: 'Revoke (delete) an API key.'
+      operationId: revokedeleteAnAPIKey
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the api key.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+  '/api/api-keys/{id}/rotate':
+    post:
+      summary: 'Rotate an API Key.'
+      operationId: rotateAnAPIKey
+      description: 'Generates a NEW token with the same configuration, deletes the old one.'
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the api key.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+  '/api/public/form/{uuid}/submit':
+    post:
+      summary: ''
+      operationId: postApiPublicFormUuidSubmit
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: uuid
+        description: ''
+        example: 6ff8f7f6-1eb3-3525-be4a-3932c805afed
+        required: true
+        schema:
+          type: string
+  /api/public/tally/form/submit:
+    post:
+      summary: ''
+      operationId: postApiPublicTallyFormSubmit
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+  /api/mcp/callback/ai-result:
+    post:
+      summary: ''
+      operationId: postApiMcpCallbackAiResult
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+  '/api/internal/leads/{lead}/update':
+    post:
+      summary: ''
+      operationId: postApiInternalLeadsLeadUpdate
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+    parameters:
+      -
+        in: path
+        name: lead
+        description: 'The lead.'
+        example: 16
+        required: true
+        schema:
+          type: integer
+  /api/internal/leads/search:
+    post:
+      summary: ''
+      operationId: postApiInternalLeadsSearch
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+  /api/leads/stats:
+    get:
+      summary: 'Get Lead Statistics'
+      operationId: getLeadStatistics
+      description: "Get key metrics for the dashboard, including totals, conversion rates, and growth trends.\nUse this to populate dashboard widgets and sparkline charts."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  stats:
+                    overview:
+                      total_leads: 1250
+                      new_leads: 45
+                      hot_leads: 12
+                      conversion_rate: 8.5
+                      stale_leads: 5
+                    growth:
+                      this_month: 150
+                      last_month: 120
+                      percentage: 25.0
+                    chart_data:
+                      '2026-01-19': 12
+                      '2026-01-20': 15
+                      '2026-01-21': 8
+                      '2026-01-22': 20
+                      '2026-01-23': 18
+                      '2026-01-24': 22
+                      '2026-01-25': 10
+                    top_sources:
+                      -
+                        source: 'Facebook Ads'
+                        count: 450
+                      -
+                        source: 'Google Search'
+                        count: 320
+                    leads_search_filters:
+                      temperatures:
+                        - cold
+                        - warm
+                        - hot
+                      sources:
+                        - 'Facebook Ads'
+                        - 'Google Search'
+                        - Referral
+                  config:
+                    entity_name_singular: Lead
+                    entity_name_plural: Leads
+                    statuses:
+                      -
+                        slug: new
+                        label: New
+                        color: blue
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      overview:
+                        type: object
+                        properties:
+                          total_leads:
+                            type: integer
+                            example: 1250
+                          new_leads:
+                            type: integer
+                            example: 45
+                          hot_leads:
+                            type: integer
+                            example: 12
+                          conversion_rate:
+                            type: number
+                            example: 8.5
+                          stale_leads:
+                            type: integer
+                            example: 5
+                      growth:
+                        type: object
+                        properties:
+                          this_month:
+                            type: integer
+                            example: 150
+                          last_month:
+                            type: integer
+                            example: 120
+                          percentage:
+                            type: number
+                            example: 25.0
+                      chart_data:
+                        type: object
+                        properties:
+                          '2026-01-19':
+                            type: integer
+                            example: 12
+                          '2026-01-20':
+                            type: integer
+                            example: 15
+                          '2026-01-21':
+                            type: integer
+                            example: 8
+                          '2026-01-22':
+                            type: integer
+                            example: 20
+                          '2026-01-23':
+                            type: integer
+                            example: 18
+                          '2026-01-24':
+                            type: integer
+                            example: 22
+                          '2026-01-25':
+                            type: integer
+                            example: 10
+                      top_sources:
+                        type: array
+                        example:
+                          -
+                            source: 'Facebook Ads'
+                            count: 450
+                          -
+                            source: 'Google Search'
+                            count: 320
+                        items:
+                          type: object
+                          properties:
+                            source:
+                              type: string
+                              example: 'Facebook Ads'
+                            count:
+                              type: integer
+                              example: 450
+                      leads_search_filters:
+                        type: object
+                        properties:
+                          temperatures:
+                            type: array
+                            example:
+                              - cold
+                              - warm
+                              - hot
+                            items:
+                              type: string
+                          sources:
+                            type: array
+                            example:
+                              - 'Facebook Ads'
+                              - 'Google Search'
+                              - Referral
+                            items:
+                              type: string
+                  config:
+                    type: object
+                    properties:
+                      entity_name_singular:
+                        type: string
+                        example: Lead
+                      entity_name_plural:
+                        type: string
+                        example: Leads
+                      statuses:
+                        type: array
+                        example:
+                          -
+                            slug: new
+                            label: New
+                            color: blue
+                        items:
+                          type: object
+                          properties:
+                            slug:
+                              type: string
+                              example: new
+                            label:
+                              type: string
+                              example: New
+                            color:
+                              type: string
+                              example: blue
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+      tags:
+        - 'Lead Management'
+  /api/leads:
+    get:
+      summary: 'List Leads'
+      operationId: listLeads
+      description: 'Retrieve a paginated list of leads with optional filtering and search.'
+      parameters:
+        -
+          in: query
+          name: status
+          description: 'Filter by lead status.'
+          example: new
+          required: false
+          schema:
+            type: string
+            description: 'Filter by lead status.'
+            example: new
+        -
+          in: query
+          name: temperature
+          description: 'Filter by temperature (cold, warm, hot).'
+          example: hot
+          required: false
+          schema:
+            type: string
+            description: 'Filter by temperature (cold, warm, hot).'
+            example: hot
+        -
+          in: query
+          name: source
+          description: 'Filter by lead source.'
+          example: 'Facebook Ads'
+          required: false
+          schema:
+            type: string
+            description: 'Filter by lead source.'
+            example: 'Facebook Ads'
+        -
+          in: query
+          name: date_from
+          description: 'Filter leads created after this date (Y-M-D).'
+          example: '2026-01-01'
+          required: false
+          schema:
+            type: string
+            description: 'Filter leads created after this date (Y-M-D).'
+            example: '2026-01-01'
+        -
+          in: query
+          name: date_to
+          description: 'Filter leads created before this date (Y-M-D).'
+          example: '2026-01-31'
+          required: false
+          schema:
+            type: string
+            description: 'Filter leads created before this date (Y-M-D).'
+            example: '2026-01-31'
+        -
+          in: query
+          name: search
+          description: 'Search by ID, source, notes, or payload content.'
+          example: 'John Doe'
+          required: false
+          schema:
+            type: string
+            description: 'Search by ID, source, notes, or payload content.'
+            example: 'John Doe'
+        -
+          in: query
+          name: per_page
+          description: 'Number of leads per page (5-100). Default: 20.'
+          example: 20
+          required: false
+          schema:
+            type: integer
+            description: 'Number of leads per page (5-100). Default: 20.'
+            example: 20
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  current_page: 1
+                  data:
+                    -
+                      id: 101
+                      status: new
+                      temperature: hot
+                      source: 'Website Form'
+                      payload:
+                        name: 'John Doe'
+                        email: john@example.com
+                      form:
+                        id: 5
+                        name: 'Contact Us'
+                  total: 120
+                  per_page: 20
+                properties:
+                  current_page:
+                    type: integer
+                    example: 1
+                  data:
+                    type: array
+                    example:
+                      -
+                        id: 101
+                        status: new
+                        temperature: hot
+                        source: 'Website Form'
+                        payload:
+                          name: 'John Doe'
+                          email: john@example.com
+                        form:
+                          id: 5
+                          name: 'Contact Us'
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 101
+                        status:
+                          type: string
+                          example: new
+                        temperature:
+                          type: string
+                          example: hot
+                        source:
+                          type: string
+                          example: 'Website Form'
+                        payload:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              example: 'John Doe'
+                            email:
+                              type: string
+                              example: john@example.com
+                        form:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 5
+                            name:
+                              type: string
+                              example: 'Contact Us'
+                  total:
+                    type: integer
+                    example: 120
+                  per_page:
+                    type: integer
+                    example: 20
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+      tags:
+        - 'Lead Management'
+    post:
+      summary: 'Create Lead'
+      operationId: createLead
+      description: 'Manually create a single lead.'
+      parameters: []
+      responses:
+        201:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Lead created successfully'
+                  id: 102
+                properties:
+                  message:
+                    type: string
+                    example: 'Lead created successfully'
+                  id:
+                    type: integer
+                    example: 102
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'The given data was invalid.'
+                  errors:
+                    payload:
+                      - 'The payload field is required.'
+                properties:
+                  message:
+                    type: string
+                    example: 'The given data was invalid.'
+                  errors:
+                    type: object
+                    properties:
+                      payload:
+                        type: array
+                        example:
+                          - 'The payload field is required.'
+                        items:
+                          type: string
+      tags:
+        - 'Lead Management'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  description: ''
+                  example: []
+                  properties: {  }
+                form_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the forms table.'
+                  example: null
+                  nullable: true
+                source:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: b
+                  nullable: true
+                temperature:
+                  type: string
+                  description: ''
+                  example: cold
+                  enum:
+                    - cold
+                    - warm
+                    - hot
+                  nullable: true
+              required:
+                - payload
+  '/api/leads/{lead_id}':
+    get:
+      summary: 'Get Lead Details'
+      operationId: getLeadDetails
+      description: 'Retrieve detailed information about a single lead, including its activities and CRM configuration.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: 101
+                  status: new
+                  temperature: hot
+                  source: 'Website Form'
+                  payload:
+                    name: 'John Doe'
+                    email: john@example.com
+                  activities:
+                    -
+                      id: 1
+                      type: note_added
+                      content: 'Customer requested a callback.'
+                      created_at: '2026-01-25 12:00:00'
+                  crm_config:
+                    entity_name_singular: Lead
+                    entity_name_plural: Leads
+                    statuses:
+                      -
+                        slug: new
+                        label: New
+                        color: blue
+                properties:
+                  id:
+                    type: integer
+                    example: 101
+                  status:
+                    type: string
+                    example: new
+                  temperature:
+                    type: string
+                    example: hot
+                  source:
+                    type: string
+                    example: 'Website Form'
+                  payload:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: 'John Doe'
+                      email:
+                        type: string
+                        example: john@example.com
+                  activities:
+                    type: array
+                    example:
+                      -
+                        id: 1
+                        type: note_added
+                        content: 'Customer requested a callback.'
+                        created_at: '2026-01-25 12:00:00'
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        type:
+                          type: string
+                          example: note_added
+                        content:
+                          type: string
+                          example: 'Customer requested a callback.'
+                        created_at:
+                          type: string
+                          example: '2026-01-25 12:00:00'
+                  crm_config:
+                    type: object
+                    properties:
+                      entity_name_singular:
+                        type: string
+                        example: Lead
+                      entity_name_plural:
+                        type: string
+                        example: Leads
+                      statuses:
+                        type: array
+                        example:
+                          -
+                            slug: new
+                            label: New
+                            color: blue
+                        items:
+                          type: object
+                          properties:
+                            slug:
+                              type: string
+                              example: new
+                            label:
+                              type: string
+                              example: New
+                            color:
+                              type: string
+                              example: blue
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Lead not found.'
+                properties:
+                  message:
+                    type: string
+                    example: 'Lead not found.'
+      tags:
+        - 'Lead Management'
+    put:
+      summary: 'Update Lead'
+      operationId: updateLead
+      description: 'Update specific fields of a lead. Use `suppress_webhooks` to avoid trigger loops.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Lead updated successfully'
+                  id: 101
+                properties:
+                  message:
+                    type: string
+                    example: 'Lead updated successfully'
+                  id:
+                    type: integer
+                    example: 101
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Lead not found.'
+                properties:
+                  message:
+                    type: string
+                    example: 'Lead not found.'
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'The given data was invalid.'
+                  errors:
+                    status:
+                      - 'The status must be a string.'
+                properties:
+                  message:
+                    type: string
+                    example: 'The given data was invalid.'
+                  errors:
+                    type: object
+                    properties:
+                      status:
+                        type: array
+                        example:
+                          - 'The status must be a string.'
+                        items:
+                          type: string
+      tags:
+        - 'Lead Management'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: b
+                  nullable: true
+                temperature:
+                  type: string
+                  description: ''
+                  example: cold
+                  enum:
+                    - cold
+                    - warm
+                    - hot
+                  nullable: true
+                notes:
+                  type: string
+                  description: ''
+                  example: external_system_added_note
+                  enum:
+                    - system_added_note
+                    - external_system_added_note
+                  nullable: true
+    parameters:
+      -
+        in: path
+        name: lead_id
+        description: 'The ID of the lead.'
+        example: 101
+        required: true
+        schema:
+          type: integer
+  '/api/leads/{lead_id}/activities':
+    get:
+      summary: 'Get Lead Activities Log'
+      operationId: getLeadActivitiesLog
+      description: 'Retrieve the most recent 20 activity logs for a specific lead.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    type:
+                      type: string
+                      example: note_added
+                    content:
+                      type: string
+                      example: 'Customer requested a callback.'
+                    created_at:
+                      type: string
+                      example: '2026-01-25 12:00:00'
+                example:
+                  -
+                    id: 1
+                    type: note_added
+                    content: 'Customer requested a callback.'
+                    created_at: '2026-01-25 12:00:00'
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Lead not found.'
+                properties:
+                  message:
+                    type: string
+                    example: 'Lead not found.'
+      tags:
+        - 'Lead Management'
+    parameters:
+      -
+        in: path
+        name: lead_id
+        description: 'The ID of the lead.'
+        example: 1
+        required: true
+        schema:
+          type: integer
+  '/api/leads/{lead_id}/note':
+    post:
+      summary: 'Add Lead Activity Log'
+      operationId: addLeadActivityLog
+      description: 'Create a new activity log entry (note) for a lead.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Note added successfully'
+                  id: 101
+                properties:
+                  message:
+                    type: string
+                    example: 'Note added successfully'
+                  id:
+                    type: integer
+                    example: 101
+      tags:
+        - 'Lead Management'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: 'Must not be greater than 300 characters.'
+                  example: b
+                type:
+                  type: string
+                  description: ''
+                  example: system_added_note
+                  enum:
+                    - system_added_note
+                    - external_system_added_note
+                  nullable: true
+              required:
+                - content
+    parameters:
+      -
+        in: path
+        name: lead_id
+        description: 'The ID of the lead.'
+        example: 101
+        required: true
+        schema:
+          type: integer
+  /api/leads/batch:
+    post:
+      summary: 'Create Leads (In Batch)'
+      operationId: createLeadsInBatch
+      description: 'Process multiple leads in a single request. Highly efficient for bulk operations.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Successfully processed 50 leads.'
+                properties:
+                  message:
+                    type: string
+                    example: 'Successfully processed 50 leads.'
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'The given data was invalid.'
+                  errors:
+                    leads:
+                      - 'The leads field is required.'
+                properties:
+                  message:
+                    type: string
+                    example: 'The given data was invalid.'
+                  errors:
+                    type: object
+                    properties:
+                      leads:
+                        type: array
+                        example:
+                          - 'The leads field is required.'
+                        items:
+                          type: string
+      tags:
+        - 'Lead Management'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leads:
+                  type: array
+                  description: ''
+                  example:
+                    - []
+                  items:
+                    type: object
+                form_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the forms table.'
+                  example: null
+                  nullable: true
+                from:
+                  type: string
+                  description: ''
+                  example: external_system_inserted
+                  enum:
+                    - system_inserted
+                    - external_system_inserted
+                  nullable: true
+                status:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: b
+                  nullable: true
+                temperature:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: 'n'
+                  nullable: true
+                source:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: g
+                  nullable: true
+              required:
+                - leads
+  /api/leads/import:
+    post:
+      summary: 'Import Leads'
+      operationId: importLeads
+      description: 'Upload a CSV file to import leads in bulk.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'Imported 100 leads.'
+                properties:
+                  message:
+                    type: string
+                    example: 'Imported 100 leads.'
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'The given data was invalid.'
+                  errors:
+                    file:
+                      - 'The file field is required.'
+                properties:
+                  message:
+                    type: string
+                    example: 'The given data was invalid.'
+                  errors:
+                    type: object
+                    properties:
+                      file:
+                        type: array
+                        example:
+                          - 'The file field is required.'
+                        items:
+                          type: string
+      tags:
+        - 'Lead Management'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 'Must be a file.'
+                status:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: b
+                  nullable: true
+                temperature:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: 'n'
+                  nullable: true
+                form_id:
+                  type: string
+                  description: 'The <code>id</code> of an existing record in the forms table.'
+                  example: null
+                  nullable: true
+                source:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: g
+                  nullable: true
+                from:
+                  type: string
+                  description: ''
+                  example: system_inserted
+                  enum:
+                    - system_inserted
+                    - external_system_inserted
+                  nullable: true
+              required:
+                - file
+  /api/leads/export:
+    post:
+      summary: 'Export Leads'
+      operationId: exportLeads
+      description: 'Download a CSV export of leads. You can optionally filter by IDs.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  description: 'Binary CSV data stream'
+                properties:
+                  description:
+                    type: string
+                    example: 'Binary CSV data stream'
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'This action is unauthorized.'
+                properties:
+                  message:
+                    type: string
+                    example: 'This action is unauthorized.'
+      tags:
+        - 'Lead Management'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  description: ''
+                  example:
+                    - 16
+                  items:
+                    type: integer
+              required:
+                - ids

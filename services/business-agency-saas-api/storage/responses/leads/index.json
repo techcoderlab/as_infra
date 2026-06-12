@@ -1,0 +1,15 @@
+{
+    "current_page": 1,
+    "data": [
+        {
+            "id": 101,
+            "status": "new",
+            "temperature": "hot",
+            "source": "Website Form",
+            "payload": { "name": "John Doe", "email": "john@example.com" },
+            "form": { "id": 5, "name": "Contact Us" }
+        }
+    ],
+    "total": 120,
+    "per_page": 20
+}

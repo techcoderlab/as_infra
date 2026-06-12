@@ -1,0 +1,1772 @@
+{
+    "variable": [
+        {
+            "id": "baseUrl",
+            "key": "baseUrl",
+            "type": "string",
+            "name": "string",
+            "value": "http:\/\/localhost"
+        }
+    ],
+    "info": {
+        "name": "Laravel API Documentation",
+        "_postman_id": "d1f8c9bc-9312-4fb6-aaab-d88f9d28bf33",
+        "description": "",
+        "schema": "https:\/\/schema.getpostman.com\/json\/collection\/v2.1.0\/collection.json"
+    },
+    "item": [
+        {
+            "name": "Endpoints",
+            "description": "",
+            "item": [
+                {
+                    "name": "POST api\/login",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/login",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/login"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"email\":\"gbailey@example.net\",\"password\":\"|]|{+-\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/register",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/register",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/register"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"tenant_name\":\"b\",\"tenant_domain\":\"n\",\"name\":\"g\",\"email\":\"rowan.gulgowski@example.com\",\"password\":\"BNvYgxwmi\\\/#iw\\\/kX\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/ai-settings",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-settings",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-settings"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"ai_provider_default\":\"gemini\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST \/api\/integrations\nSecurely store the keys.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/integrations",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/integrations"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"service\":\"architecto\",\"value\":[],\"key\":\"architecto\",\"is_active\":false,\"is_brain\":false}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "PUT api\/integrations\/{id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/integrations\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/integrations\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the integration."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"service\":\"architecto\",\"value\":[],\"key\":\"architecto\",\"is_active\":false,\"is_brain\":true}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "DELETE \/api\/integrations\/{id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/integrations\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/integrations\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the integration."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Store a new agent.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-agents",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-agents"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"slug\":\"n\",\"brain\":\"architecto\",\"model\":\"architecto\",\"system_prompt\":\"architecto\",\"user_prompt\":\"architecto\",\"is_active\":true}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update an existing agent.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-agents\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-agents\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the ai agent."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"slug\":\"n\",\"brain\":\"architecto\",\"model\":\"architecto\",\"system_prompt\":\"architecto\",\"user_prompt\":\"architecto\",\"is_active\":true}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete an agent.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-agents\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-agents\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the ai agent."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/ai-agent\/settings",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-agent\/settings",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-agent\/settings"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"ai_provider_default\":\"gemini\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/tenants",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/tenants",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/tenants"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"domain\":\"n\",\"status\":\"suspended\",\"plan_id\":\"architecto\",\"expires_at\":\"2026-01-25T17:18:15\",\"crm_config\":{\"entity_name_singular\":\"architecto\",\"entity_name_plural\":\"architecto\",\"statuses\":[{\"slug\":\"architecto\",\"label\":\"architecto\",\"color\":\"architecto\"}]}}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "PATCH api\/tenants\/{tenant_id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/tenants\/:tenant_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/tenants\/:tenant_id",
+                            "variable": [
+                                {
+                                    "id": "tenant_id",
+                                    "key": "tenant_id",
+                                    "value": "16",
+                                    "description": "The ID of the tenant."
+                                }
+                            ]
+                        },
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"domain\":\"n\",\"status\":\"active\",\"expires_at\":\"2026-01-25T17:18:15\",\"crm_config\":{\"entity_name_singular\":\"architecto\",\"entity_name_plural\":\"architecto\",\"statuses\":[{\"slug\":\"architecto\",\"label\":\"architecto\",\"color\":\"architecto\"}]}}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "DELETE api\/tenants\/{tenant_id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/tenants\/:tenant_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/tenants\/:tenant_id",
+                            "variable": [
+                                {
+                                    "id": "tenant_id",
+                                    "key": "tenant_id",
+                                    "value": "16",
+                                    "description": "The ID of the tenant."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/tenants\/crm-config",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/tenants\/crm-config",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/tenants\/crm-config"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"entity_name_singular\":\"b\",\"entity_name_plural\":\"n\",\"statuses\":[{\"slug\":\"architecto\",\"label\":\"architecto\",\"color\":\"architecto\"}]}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/plans",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/plans",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/plans"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"architecto\",\"slug\":\"architecto\",\"price\":4326.41688}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "PUT api\/plans\/{plan_id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/plans\/:plan_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/plans\/:plan_id",
+                            "variable": [
+                                {
+                                    "id": "plan_id",
+                                    "key": "plan_id",
+                                    "value": "16",
+                                    "description": "The ID of the plan."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"architecto\",\"price\":4326.41688}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "DELETE api\/plans\/{plan_id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/plans\/:plan_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/plans\/:plan_id",
+                            "variable": [
+                                {
+                                    "id": "plan_id",
+                                    "key": "plan_id",
+                                    "value": "16",
+                                    "description": "The ID of the plan."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/modules",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/modules",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/modules"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/tenants\/{tenant_id}\/assign-plan",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/tenants\/:tenant_id\/assign-plan",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/tenants\/:tenant_id\/assign-plan",
+                            "variable": [
+                                {
+                                    "id": "tenant_id",
+                                    "key": "tenant_id",
+                                    "value": "16",
+                                    "description": "The ID of the tenant."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"plan_id\":\"architecto\",\"expires_at\":\"2026-01-25T17:18:15\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/ai-chats",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-chats",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-chats"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"webhook_url\":\"http:\\\/\\\/bailey.com\\\/\",\"webhook_secret\":\"architecto\",\"welcome_message\":\"architecto\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "PUT api\/ai-chats\/{id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-chats\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-chats\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "16",
+                                    "description": "The ID of the ai chat."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"webhook_url\":\"http:\\\/\\\/bailey.com\\\/\",\"webhook_secret\":\"architecto\",\"welcome_message\":\"architecto\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "DELETE api\/ai-chats\/{id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-chats\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-chats\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "16",
+                                    "description": "The ID of the ai chat."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/ai-chats\/{aiChat_id}\/message",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/ai-chats\/:aiChat_id\/message",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/ai-chats\/:aiChat_id\/message",
+                            "variable": [
+                                {
+                                    "id": "aiChat_id",
+                                    "key": "aiChat_id",
+                                    "value": "16",
+                                    "description": "The ID of the aiChat."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"text_content\":\"architecto\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/forms",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/forms",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/forms"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"is_active\":false,\"form_source\":\"ngzmiyvdljnikhwa\",\"form_public_url\":\"http:\\\/\\\/breitenberg.com\\\/nostrum-aut-adipisci-quidem-nostrum.html\",\"ref_form_id\":\"l\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "PUT api\/forms\/{form_id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/forms\/:form_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/forms\/:form_id",
+                            "variable": [
+                                {
+                                    "id": "form_id",
+                                    "key": "form_id",
+                                    "value": "architecto",
+                                    "description": "The ID of the form."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"is_active\":false,\"form_source\":\"ngzmiyvdljnikhwa\",\"form_public_url\":\"http:\\\/\\\/breitenberg.com\\\/nostrum-aut-adipisci-quidem-nostrum.html\",\"ref_form_id\":\"l\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "DELETE api\/forms\/{form_id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/forms\/:form_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/forms\/:form_id",
+                            "variable": [
+                                {
+                                    "id": "form_id",
+                                    "key": "form_id",
+                                    "value": "architecto",
+                                    "description": "The ID of the form."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/webhooks",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/webhooks",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/webhooks"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"url\":\"http:\\\/\\\/bailey.com\\\/\",\"secret\":\"m\",\"form_id\":\"architecto\",\"events\":[\"architecto\"]}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "DELETE api\/webhooks\/{id}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/webhooks\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/webhooks\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the webhook."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create a new API key with specific permissions and expiry.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/api-keys",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/api-keys"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"expiration_days\":\"90\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update an existing API key (Rename, Scopes, or Expiry).",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/api-keys\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/api-keys\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the api key."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"b\",\"expiration_days\":\"60\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Revoke (delete) an API key.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/api-keys\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/api-keys\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the api key."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Rotate an API Key.",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/api-keys\/:id\/rotate",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/api-keys\/:id\/rotate",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the api key."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Generates a NEW token with the same configuration, deletes the old one."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/public\/form\/{uuid}\/submit",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/public\/form\/:uuid\/submit",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/public\/form\/:uuid\/submit",
+                            "variable": [
+                                {
+                                    "id": "uuid",
+                                    "key": "uuid",
+                                    "value": "6ff8f7f6-1eb3-3525-be4a-3932c805afed",
+                                    "description": ""
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/public\/tally\/form\/submit",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/public\/tally\/form\/submit",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/public\/tally\/form\/submit"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/mcp\/callback\/ai-result",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/mcp\/callback\/ai-result",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/mcp\/callback\/ai-result"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/internal\/leads\/{lead}\/update",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/internal\/leads\/:lead\/update",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/internal\/leads\/:lead\/update",
+                            "variable": [
+                                {
+                                    "id": "lead",
+                                    "key": "lead",
+                                    "value": "16",
+                                    "description": "The lead."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST api\/internal\/leads\/search",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/internal\/leads\/search",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/internal\/leads\/search"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Lead Management",
+            "description": "\nAPI Endpoints for managing leads, including creation, retrieval, updates, and exports.\nAll endpoints are scoped to the authenticated user's current tenant.",
+            "item": [
+                {
+                    "name": "Get Lead Statistics",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/stats",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/stats"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Get key metrics for the dashboard, including totals, conversion rates, and growth trends.\nUse this to populate dashboard widgets and sparkline charts."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n    \"stats\": {\n        \"overview\": {\n            \"total_leads\": 1250,\n            \"new_leads\": 45,\n            \"hot_leads\": 12,\n            \"conversion_rate\": 8.5,\n            \"stale_leads\": 5\n        },\n        \"growth\": {\n            \"this_month\": 150,\n            \"last_month\": 120,\n            \"percentage\": 25.0\n        },\n        \"chart_data\": {\n            \"2026-01-19\": 12,\n            \"2026-01-20\": 15,\n            \"2026-01-21\": 8,\n            \"2026-01-22\": 20,\n            \"2026-01-23\": 18,\n            \"2026-01-24\": 22,\n            \"2026-01-25\": 10\n        },\n        \"top_sources\": [\n            { \"source\": \"Facebook Ads\", \"count\": 450 },\n            { \"source\": \"Google Search\", \"count\": 320 }\n        ],\n        \"leads_search_filters\": {\n            \"temperatures\": [\"cold\", \"warm\", \"hot\"],\n            \"sources\": [\"Facebook Ads\", \"Google Search\", \"Referral\"]\n        }\n    },\n    \"config\": {\n        \"entity_name_singular\": \"Lead\",\n        \"entity_name_plural\": \"Leads\",\n        \"statuses\": [{ \"slug\": \"new\", \"label\": \"New\", \"color\": \"blue\" }]\n    }\n}\n",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "List Leads",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads",
+                            "query": [
+                                {
+                                    "key": "status",
+                                    "value": "new",
+                                    "description": "Filter by lead status.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "temperature",
+                                    "value": "hot",
+                                    "description": "Filter by temperature (cold, warm, hot).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "source",
+                                    "value": "Facebook+Ads",
+                                    "description": "Filter by lead source.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_from",
+                                    "value": "2026-01-01",
+                                    "description": "Filter leads created after this date (Y-M-D).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "2026-01-31",
+                                    "description": "Filter leads created before this date (Y-M-D).",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "John+Doe",
+                                    "description": "Search by ID, source, notes, or payload content.",
+                                    "disabled": false
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "20",
+                                    "description": "Number of leads per page (5-100). Default: 20.",
+                                    "disabled": false
+                                }
+                            ],
+                            "raw": "{{baseUrl}}\/api\/leads?status=new&temperature=hot&source=Facebook+Ads&date_from=2026-01-01&date_to=2026-01-31&search=John+Doe&per_page=20"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Retrieve a paginated list of leads with optional filtering and search."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n    \"current_page\": 1,\n    \"data\": [\n        {\n            \"id\": 101,\n            \"status\": \"new\",\n            \"temperature\": \"hot\",\n            \"source\": \"Website Form\",\n            \"payload\": { \"name\": \"John Doe\", \"email\": \"john@example.com\" },\n            \"form\": { \"id\": 5, \"name\": \"Contact Us\" }\n        }\n    ],\n    \"total\": 120,\n    \"per_page\": 20\n}\n",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Lead Details",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/:lead_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/:lead_id",
+                            "variable": [
+                                {
+                                    "id": "lead_id",
+                                    "key": "lead_id",
+                                    "value": "101",
+                                    "description": "The ID of the lead."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Retrieve detailed information about a single lead, including its activities and CRM configuration."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n    \"id\": 101,\n    \"status\": \"new\",\n    \"temperature\": \"hot\",\n    \"source\": \"Website Form\",\n    \"payload\": { \"name\": \"John Doe\", \"email\": \"john@example.com\" },\n    \"activities\": [\n        {\n            \"id\": 1,\n            \"type\": \"note_added\",\n            \"content\": \"Customer requested a callback.\",\n            \"created_at\": \"2026-01-25 12:00:00\"\n        }\n    ],\n    \"crm_config\": {\n        \"entity_name_singular\": \"Lead\",\n        \"entity_name_plural\": \"Leads\",\n        \"statuses\": [{ \"slug\": \"new\", \"label\": \"New\", \"color\": \"blue\" }]\n    }\n}\n",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{ \"message\": \"Lead not found.\" }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Lead Activities Log",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/:lead_id\/activities",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/:lead_id\/activities",
+                            "variable": [
+                                {
+                                    "id": "lead_id",
+                                    "key": "lead_id",
+                                    "value": "1",
+                                    "description": "The ID of the lead."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Retrieve the most recent 20 activity logs for a specific lead."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "[\n  {\n    \"id\": 1,\n    \"type\": \"note_added\",\n    \"content\": \"Customer requested a callback.\",\n    \"created_at\": \"2026-01-25 12:00:00\"\n  }\n]",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{ \"message\": \"Lead not found.\" }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Add Lead Activity Log",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/:lead_id\/note",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/:lead_id\/note",
+                            "variable": [
+                                {
+                                    "id": "lead_id",
+                                    "key": "lead_id",
+                                    "value": "101",
+                                    "description": "The ID of the lead."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"content\":\"b\",\"type\":\"system_added_note\"}"
+                        },
+                        "description": "Create a new activity log entry (note) for a lead."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"message\": \"Note added successfully\",\n  \"id\": 101\n}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Lead",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"payload\":[],\"source\":\"b\",\"temperature\":\"cold\"}"
+                        },
+                        "description": "Manually create a single lead."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 201,
+                            "body": "{\n  \"message\": \"Lead created successfully\",\n  \"id\": 102\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 422,
+                            "body": "{ \"message\": \"The given data was invalid.\", \"errors\": { \"payload\": [\"The payload field is required.\"] } }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Leads (In Batch)",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/batch",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/batch"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"leads\":[[]],\"from\":\"external_system_inserted\",\"status\":\"b\",\"temperature\":\"n\",\"source\":\"g\"}"
+                        },
+                        "description": "Process multiple leads in a single request. Highly efficient for bulk operations."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"message\": \"Successfully processed 50 leads.\"\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 422,
+                            "body": "{ \"message\": \"The given data was invalid.\", \"errors\": { \"leads\": [\"The leads field is required.\"] } }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Update Lead",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/:lead_id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/:lead_id",
+                            "variable": [
+                                {
+                                    "id": "lead_id",
+                                    "key": "lead_id",
+                                    "value": "101",
+                                    "description": "The ID of the lead."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"status\":\"b\",\"temperature\":\"cold\",\"notes\":\"external_system_added_note\"}"
+                        },
+                        "description": "Update specific fields of a lead. Use `suppress_webhooks` to avoid trigger loops."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"message\": \"Lead updated successfully\",\n  \"id\": 101\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{ \"message\": \"Lead not found.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 422,
+                            "body": "{ \"message\": \"The given data was invalid.\", \"errors\": { \"status\": [\"The status must be a string.\"] } }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Import Leads",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/import",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/import"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "multipart\/form-data"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "status",
+                                    "value": "b",
+                                    "type": "text",
+                                    "description": "Must not be greater than 50 characters."
+                                },
+                                {
+                                    "key": "temperature",
+                                    "value": "n",
+                                    "type": "text",
+                                    "description": "Must not be greater than 50 characters."
+                                },
+                                {
+                                    "key": "source",
+                                    "value": "g",
+                                    "type": "text",
+                                    "description": "Must not be greater than 50 characters."
+                                },
+                                {
+                                    "key": "from",
+                                    "value": "system_inserted",
+                                    "type": "text",
+                                    "description": ""
+                                },
+                                {
+                                    "key": "file",
+                                    "src": [],
+                                    "type": "file"
+                                }
+                            ]
+                        },
+                        "description": "Upload a CSV file to import leads in bulk."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"message\": \"Imported 100 leads.\"\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 422,
+                            "body": "{ \"message\": \"The given data was invalid.\", \"errors\": { \"file\": [\"The file field is required.\"] } }",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Export Leads",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "api\/leads\/export",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/api\/leads\/export"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"ids\":[16]}"
+                        },
+                        "description": "Download a CSV export of leads. You can optionally filter by IDs."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n \"description\": \"Binary CSV data stream\"\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 401,
+                            "body": "{ \"message\": \"Unauthenticated.\" }",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{ \"message\": \"This action is unauthorized.\" }",
+                            "name": ""
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "Authorization",
+                "type": "string"
+            }
+        ]
+    }
+}

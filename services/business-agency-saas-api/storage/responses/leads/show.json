@@ -1,0 +1,20 @@
+{
+    "id": 101,
+    "status": "new",
+    "temperature": "hot",
+    "source": "Website Form",
+    "payload": { "name": "John Doe", "email": "john@example.com" },
+    "activities": [
+        {
+            "id": 1,
+            "type": "note_added",
+            "content": "Customer requested a callback.",
+            "created_at": "2026-01-25 12:00:00"
+        }
+    ],
+    "crm_config": {
+        "entity_name_singular": "Lead",
+        "entity_name_plural": "Leads",
+        "statuses": [{ "slug": "new", "label": "New", "color": "blue" }]
+    }
+}
