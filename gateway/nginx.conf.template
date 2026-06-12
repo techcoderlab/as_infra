@@ -1,0 +1,153 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    include        mime.types;
+    default_type   application/octet-stream;
+    server_tokens off;
+    client_max_body_size 50M;
+
+    # 1. Laravel PHP-FPM Upstream
+    upstream agency_sass_api {
+        server business-agency-saas-api:9000; 
+    }
+
+    # 2. Python Business Tools Upstream (Unified Service)
+    upstream business_tools {
+        server business-tools-service:8017;
+        keepalive 32;
+    }
+
+    # 3. n8n Upstream
+    upstream n8n_server {
+        server n8n:5678;
+    }
+
+
+    server {
+        listen 80;
+        server_name ${DOMAIN} gateway;
+
+        # Root points to the Laravel public folder mounted in Gateway container
+        root /var/www/html/public;
+        index index.php index.html;
+
+        # --- A. Laravel Main Route (Static Files) ---
+        location / {
+            # Checks for file -> folder -> passes to PHP
+            try_files $uri $uri/ /index.php?$query_string;
+            
+            # REMOVED: proxy_* directives here were useless because 
+            # this block serves files or passes to @php, it does not proxy HTTP.
+        }
+
+
+        # --- B. Laravel PHP Execution (PHP-FPM) ---
+        location ~ \.php$ {
+            fastcgi_pass agency_sass_api;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+            
+            # Headers
+            fastcgi_param HTTP_X_REAL_IP $remote_addr;
+            fastcgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;
+            fastcgi_param HTTP_X_FORWARDED_PROTO $scheme;
+
+            # --- FIX FOR STREAMING ---
+            # 1. Disable FastCGI Buffering explicitly
+            # This ensures PHP sends data to Nginx and Nginx sends it to the user immediately.
+            fastcgi_buffering off;
+
+            # 2. Increase Read Timeout
+            # Prevents Nginx from cutting off the connection while the AI is "Thinking"
+            fastcgi_read_timeout 300s;
+        }
+
+        # --- C. Business Tools Route ---
+        location /tools/ {
+
+            # Fix: Redirect /tools/docs -> /tools/docs/ 
+            # This prevents relative link breakage for Swagger UI assets
+            # location = /tools/docs {
+            #     return 302 /tools/docs/;
+            # }
+
+
+            # Trailing slash matches /tools/ and strips it when passing to backend
+            # e.g., /tools/health -> http://business_tools/health
+            proxy_pass http://business_tools/;
+            
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # --- D. AI Agent Routes (CRITICAL OPTIMIZATIONS) ---
+        location /tools/v1/agent/ {
+            proxy_pass http://business_tools/v1/agent/;
+            
+            # 1. Streaming Optimizations (Required for SSE/Chat)
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_set_header Connection '';
+            proxy_http_version 1.1;
+            
+            # 2. Timeout Increase (CRITICAL)
+            # Default is 60s. LLMs often take longer to "think" or finish large contexts.
+            proxy_read_timeout 300s;
+            proxy_connect_timeout 300s;
+            proxy_send_timeout 300s;
+
+            # 3. Headers
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # --- E.1. Fix for n8n cURL Import (WebAssembly requested at root) ---
+        location = /tree-sitter.wasm {
+            proxy_pass http://n8n_server/tree-sitter.wasm;
+            proxy_set_header Host $host;
+        }
+
+        # --- E. n8n Automation Route ---
+        location /n8n/ {
+            # CRITICAL: The trailing slash on proxy_pass strips the /n8n/ prefix
+            # before sending it to the backend. This allows n8n to resolve /assets/.
+            proxy_pass http://n8n_server/;
+            
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_set_header Connection '';
+            proxy_http_version 1.1;
+            chunked_transfer_encoding off;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Prefix /n8n;
+
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "Upgrade";
+            
+            proxy_read_timeout 600s;
+            proxy_connect_timeout 600s;
+        }
+    }
+
+    # ───────── Health Check ─────────
+    # Catches traffic to IP or unknown domains (AWS LB / DigitalOcean Checks)
+    server {
+        listen 80 default_server;
+        server_name _;
+        
+        location /health {
+            add_header Content-Type application/json;
+            return 200 '{"status":"healthy"}';
+        }
+    }
+}

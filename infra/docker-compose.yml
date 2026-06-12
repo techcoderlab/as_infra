@@ -1,0 +1,293 @@
+# infra docker-compose.yml
+version: "3.9"
+
+services:
+  # ───────── Gateway ─────────
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    ports:
+      - "80:80"
+    restart: always
+    environment:
+      # Pass these to Nginx for the dynamic config generation
+      - N8N_DOMAIN=${N8N_HOST}
+      - DOMAIN=${DOMAIN}
+
+    volumes:
+      # CRITICAL: Gateway needs access to Laravel public files to serve them
+      - ../services/business-agency-saas-api:/var/www/html
+
+    # Command: Generates nginx.conf from template using .env vars, then starts nginx
+    command: /bin/sh -c "envsubst '$$N8N_DOMAIN $$DOMAIN' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
+
+    depends_on:
+      business-tools-service:
+        condition: service_started
+      business-agency-saas-api:
+        condition: service_started
+      n8n:
+        condition: service_started
+
+    networks:
+      - microservices_net
+
+  # ───────── Redis ─────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    command: redis-server --maxclients 10000
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.20"
+    # ports:
+    #   - "127.0.0.1:6379:6379" # Bind only to your Mac's internal loopback
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_net
+
+  # ───────── DB Admin Tool ─────────
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: always
+    ports:
+      - "127.0.0.1:8081:8080" # Only accessible locally for security
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - microservices_net
+
+  # ───────── Postgres ─────────
+  postgres:
+    image: postgres:15-alpine
+    # image: pgvector/pgvector:pg15 # Swapped from postgres:15-alpine
+    container_name: postgres
+    restart: always
+    # ports:
+    #   - "127.0.0.1:5432:5432" # Bind only to your Mac's internal loopback
+    volumes:
+      - n8n_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_AS_USER} -d ${POSTGRES_AS_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_net
+
+  # ───────── n8n ─────────
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    # Expose 5678 to localhost so your local ngrok can tunnel to it
+    # ports:
+    #   # - "127.0.0.1:5678:5678"
+    #   - "5678:5678"
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_N8N_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_N8N_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_N8N_USER_PASSWORD}
+
+      # Dynamic Configuration from .env
+      - N8N_PROTOCOL=${N8N_PROTOCOL}
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=${N8N_PORT}
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - N8N_PATH=${N8N_PATH}
+      - N8N_EDITOR_BASE_URL=${N8N_WEBHOOK_URL}
+
+      # Added to match your working command
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=${N8N_FILE_PERMISSIONS}
+      - N8N_TRUST_PROXY=true
+
+      # To allow crypto module in n8n
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+
+      # Uncomment below line in production
+      # - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - microservices_net
+
+  # ───────── Business Tools Service ─────────
+  business-tools-service:
+    build:
+      context: ../services/business-tools-service
+      dockerfile: Dockerfile
+    image: micro-business-tools-service:latest
+    container_name: business-tools-service
+    restart: always
+    environment:
+      - ENV=production
+      - PORT=8017
+      - REDIS_HOST=redis
+      - APP_URL=${AS_APP_URL}
+      - SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
+      - ALLOWED_CALLBACK_DOMAINS=${ALLOWED_CALLBACK_DOMAINS}
+      # - ROOT_PATH=
+      # CRITICAL FIX: Tells FastAPI it is served behind /tools
+      - ROOT_PATH=/tools
+
+    deploy:
+      resources:
+        limits:
+          # cpus: "0.40"
+          # memory: 512M
+          cpus: "1.0"
+          memory: 1GB
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # Map the container's log folder to a 'logs' folder on your host
+      - ./logs:/app/logs
+    networks:
+      - microservices_net
+
+  # ───────── Laravel API (PHP-FPM) ─────────
+  business-agency-saas-api:
+    build:
+      context: ../services/business-agency-saas-api # Point to your Laravel folder
+      dockerfile: Dockerfile
+    container_name: business-agency-saas-api
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: 512M
+    volumes:
+      # Sync code changes immediately for development
+      - ../services/business-agency-saas-api:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - microservices_net
+    environment:
+      - APP_NAME=Agency Saas API
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - FRONTEND_URL=${AS_FRONTEND_URL}
+      - APP_URL=${AS_APP_URL}
+      - REDIS_PORT=${REDIS_PORT}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - QUEUE_CONNECTION=redis
+      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
+      - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
+      - SCRIBE_AUTH_KEY=${AS_SCRIBE_AUTH_KEY}
+
+  # 1. Standard Worker: Fast, high-priority business logic
+  agency-saas-queue-worker-default:
+    build: ../services/business-agency-saas-api
+    container_name: agency-saas-worker-default
+    restart: always
+    # Focus: Speed and reliability for web-critical tasks
+    command: php artisan queue:work redis --queue=web-critical,default --tries=3 --timeout=60 --sleep=1
+    volumes:
+      - ../services/business-agency-saas-api:/var/www/html
+    environment:
+      - APP_NAME=Agency Saas API
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - APP_URL=${AS_APP_URL}
+      - REDIS_PORT=${REDIS_PORT}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - QUEUE_CONNECTION=redis
+      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
+      - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30" # Reserve half a core for standard tasks
+          memory: 512M
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    networks:
+      - microservices_net
+
+  # 2. AI Heavy Worker: Slow, high-latency LLM tasks
+  agency-saas-queue-worker-ai:
+    build: ../services/business-agency-saas-api
+    container_name: agency-saas-worker-ai
+    restart: always
+    # Optimization: restarts every 50 jobs to prevent Python-sidecar-related memory leaks
+    # timeout=300 gives the AI 5 minutes to finish without the worker killing it
+    command: php artisan queue:work redis --queue=ai-heavy --tries=2 --max-jobs=50 --timeout=300 --sleep=1
+    volumes:
+      - ../services/business-agency-saas-api:/var/www/html
+    environment:
+      - APP_NAME=Agency Saas API
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - APP_URL=${AS_APP_URL}
+      - REDIS_PORT=${REDIS_PORT}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - QUEUE_CONNECTION=redis
+      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
+      - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50" # Give AI more CPU burst capability
+          memory: 512M # Dedicated memory for large context processing
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    networks:
+      - microservices_net
+
+# --- Networking ---
+networks:
+  microservices_net:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    external: true
+  n8n_postgres_data:
+    external: true
+  redis_data:

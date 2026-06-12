@@ -1,0 +1,5 @@
+/base
+*.zip
+extract_here.zip
+services/business_tts_stt-service/
+services/document_extraction_bot/
