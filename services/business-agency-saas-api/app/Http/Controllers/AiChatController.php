@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\URL;
 
 class AiChatController extends Controller
 {
-    public function __construct(protected AiGateway $aiGateway) {}
+    public function __construct(protected AiGateway $aiGateway)
+    {
+    }
 
     public function index()
     {
@@ -26,7 +28,7 @@ class AiChatController extends Controller
 
         // Cache::forget('ai_agents');
         $agents = Cache::remember('ai_agents', 30, function () {
-            return AiAgent::select('id', 'slug')->latest()->get();
+            return AiAgent::select('id', 'slug', 'is_active')->latest()->get();
         });
 
         return response()->json([
@@ -135,7 +137,7 @@ class AiChatController extends Controller
     {
         $this->authorize('view', $aiChat);
 
-        if (! $aiChat->webhook_url) {
+        if (!$aiChat->webhook_url) {
             return response()->json([
                 'status' => 'inactive',
                 'message' => 'No webhook URL configured',
@@ -194,7 +196,7 @@ class AiChatController extends Controller
         $userText = $request->input('text_content');
 
         // Priority B: Fallback to parsing 'messages' (if text-only JSON request)
-        if (! $userText) {
+        if (!$userText) {
             $rawMessages = $request->input('messages');
             // If it's a string (multipart), decode it
             if (is_string($rawMessages)) {
@@ -214,20 +216,20 @@ class AiChatController extends Controller
         if ($request->hasFile('files')) {
             // Force array to handle single/multiple files safely
             $uploadedFiles = $request->file('files');
-            if (! is_array($uploadedFiles)) {
+            if (!is_array($uploadedFiles)) {
                 $uploadedFiles = [$uploadedFiles];
             }
 
             foreach ($uploadedFiles as $file) {
                 try {
                     $tenantId = $user->current_tenant_id ?? 'default';
-                    $filename = \Illuminate\Support\Str::random(20).'.'.$file->getClientOriginalExtension();
-                    $folder = "tenants/{$tenantId}/chat_uploads/".date('Y');
+                    $filename = \Illuminate\Support\Str::random(20) . '.' . $file->getClientOriginalExtension();
+                    $folder = "tenants/{$tenantId}/chat_uploads/" . date('Y');
 
                     $path = $file->storeAs($folder, $filename, 'public');
 
                     if ($path) {
-                        $fullUrl = asset('storage/'.$path);
+                        $fullUrl = asset('storage/' . $path);
                         $mime = $file->getMimeType();
 
                         $type = 'file';
@@ -242,7 +244,7 @@ class AiChatController extends Controller
                         $n8nFiles[] = ['filename' => $file->getClientOriginalName(), 'url' => $fullUrl, 'mimeType' => $mime];
                     }
                 } catch (\Exception $e) {
-                    Log::error('File Upload Error: '.$e->getMessage());
+                    Log::error('File Upload Error: ' . $e->getMessage());
                 }
             }
         }
@@ -271,11 +273,11 @@ class AiChatController extends Controller
         try {
             $response = $http->post($url, $payload);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Connection Failed: '.$e->getMessage()], 200);
+            return response()->json(['error' => 'Connection Failed: ' . $e->getMessage()], 200);
         }
 
         if ($response->failed()) {
-            return response()->json(['error' => 'AI Error: '.$response->body()], 200);
+            return response()->json(['error' => 'AI Error: ' . $response->body()], 200);
         }
 
         // 5. Save AI Response
@@ -332,15 +334,15 @@ class AiChatController extends Controller
             $agent = $aiChat->agent;
 
             // 2. Fallback: If no specific agent attached, find a default active one for this tenant
-            if (! $agent) {
+            if (!$agent) {
                 $agent = AiAgent::where('tenant_id', $aiChat->tenant_id)
                     ->where('is_active', true)
                     ->first();
             }
 
-            if (! $agent) {
-                echo 'data: '.json_encode(['type' => 'error', 'data' => 'No active AI Agent configuration found.'])."\n\n";
-                echo 'data: '.json_encode(['type' => 'done'])."\n\n";
+            if (!$agent) {
+                echo 'data: ' . json_encode(['type' => 'error', 'data' => 'No active AI Agent configuration found.']) . "\n\n";
+                echo 'data: ' . json_encode(['type' => 'done']) . "\n\n";
 
                 return;
             }
@@ -351,8 +353,8 @@ class AiChatController extends Controller
                 ->latest('id')
                 ->first();
 
-            if (! $lastUserMessage) {
-                echo 'data: '.json_encode(['type' => 'done'])."\n\n";
+            if (!$lastUserMessage) {
+                echo 'data: ' . json_encode(['type' => 'done']) . "\n\n";
 
                 return;
             }
@@ -363,7 +365,7 @@ class AiChatController extends Controller
                 ->limit($agent->context_window_size ?? 10) // Optimization: Increased context window slightly
                 ->get()
                 ->reverse()
-                ->map(fn ($m) => [
+                ->map(fn($m) => [
                     'role' => $m->role,
                     'content' => $m->content,
                 ])
@@ -371,7 +373,7 @@ class AiChatController extends Controller
                 ->toArray();
 
             // Send connection signal
-            echo 'data: '.json_encode(['type' => 'connected'])."\n\n";
+            echo 'data: ' . json_encode(['type' => 'connected']) . "\n\n";
 
             // Execute Stream via Gateway
             try {
@@ -392,7 +394,7 @@ class AiChatController extends Controller
                 $buffer = '';
                 $fullAiText = '';
 
-                while (! $body->eof()) {
+                while (!$body->eof()) {
                     $chunk = $body->read(1024);
                     $buffer .= $chunk;
 
@@ -405,7 +407,7 @@ class AiChatController extends Controller
                             $jsonStr = substr($cleanLine, 6);
 
                             // Pass through to frontend immediately
-                            echo 'data: '.$jsonStr."\n\n";
+                            echo 'data: ' . $jsonStr . "\n\n";
 
                             // Capture text for DB storage
                             $data = json_decode($jsonStr, true);
@@ -426,11 +428,11 @@ class AiChatController extends Controller
                     ]);
                 }
 
-                echo 'data: '.json_encode(['type' => 'done'])."\n\n";
+                echo 'data: ' . json_encode(['type' => 'done']) . "\n\n";
             } catch (\Exception $e) {
-                Log::error('Stream Error: '.$e->getMessage());
-                echo 'data: '.json_encode(['type' => 'error', 'data' => 'I encountered an error processing your request.'])."\n\n";
-                echo 'data: '.json_encode(['type' => 'done'])."\n\n";
+                Log::error('Stream Error: ' . $e->getMessage());
+                echo 'data: ' . json_encode(['type' => 'error', 'data' => 'I encountered an error processing your request.']) . "\n\n";
+                echo 'data: ' . json_encode(['type' => 'done']) . "\n\n";
             }
         }, 200, [
             'Content-Type' => 'text/event-stream',

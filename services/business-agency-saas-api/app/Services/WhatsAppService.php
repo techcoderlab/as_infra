@@ -104,11 +104,15 @@ class WhatsAppService extends AbstractMessagingService implements MessagingProvi
         $timestamp = time();
 
         $jsonBody = json_encode($data);
-        $signature = hash_hmac('sha256', $timestamp.$jsonBody, $secret);
+
+        $appId = config('services.mcp_sidecar.client_app_id');
+        $secret = config('services.mcp_sidecar.client_secret');
+        $signature = create_valid_signature($secret, $timestamp, $jsonBody);
 
         Log::info("[WhatsAppService]: Dispatching to Sidecar for {$data['message']['recipient_phone']}");
 
         $response = Http::withHeaders([
+            'X-App-Id' => $appId,
             'X-Signature' => $signature,
             'X-Timestamp' => $timestamp,
             'X-Service-ID' => config('services.mcp_sidecar.calling_api_name'),

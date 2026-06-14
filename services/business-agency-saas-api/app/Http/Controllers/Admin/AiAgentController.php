@@ -1,5 +1,9 @@
 <?php
 
+// ─────────────────────────────────────────────────────
+// Module   : AiAgentController
+// ─────────────────────────────────────────────────────
+
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
@@ -42,7 +46,6 @@ class AiAgentController extends Controller
                 ->orderByRaw('created_at DESC NULLS LAST')
                 ->get();
 
-            $agents = AiAgent::where('tenant_id', $tenantId)->get();
             foreach ($agents as $agent) {
                 try {
                     $agent->toArray(); // This triggers the decryption
@@ -151,7 +154,7 @@ class AiAgentController extends Controller
             $this->syncTriggers($agent, $request->triggers);
         }
 
-        return response()->json($agent, 201);
+        return response()->json($agent->fresh(['trigger']), 201);
     }
 
     /**
@@ -203,7 +206,7 @@ class AiAgentController extends Controller
         }
 
         // Refresh to include any updated relationships/attributes
-        return response()->json($agent->fresh());
+        return response()->json($agent->fresh(['trigger']));
     }
 
     /**

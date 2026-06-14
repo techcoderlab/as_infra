@@ -13,6 +13,7 @@ import ApiKeysPage from '../views/admin/ApiKeysPage.vue'
 import AiChatIndexPage from '../views/admin/ai-chat/AiChatIndex.vue'
 import AiChatRoomPage from '../views/admin/ai-chat/AiChatRoom.vue'
 import SuperAdminPlansAndModules from '../views/admin/PlansManager.vue'
+import ExternalApiKeysPage from '../views/admin/ExternalApiKeysPage.vue'
 
 import DashboardWrapper from '@/views/DashboardWrapper.vue' // Import the wrapper
 
@@ -109,6 +110,12 @@ const router = createRouter({
           path: 'plans-and-modules',
           name: 'superadmin-plans-and-modules',
           component: SuperAdminPlansAndModules,
+          meta: { role: 'super_admin' },
+        },
+        {
+          path: 'external-api-keys',
+          name: 'superadmin-external-api-keys',
+          component: ExternalApiKeysPage,
           meta: { role: 'super_admin' },
         },
       ],

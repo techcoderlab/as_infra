@@ -38,7 +38,7 @@ return [
     'mcp_sidecar' => [
         'calling_api_name' => env('MCP_SIDECAR_CALLING_API_NAME', 'agency-saas-api-prod'),
         'url' => env('MCP_SIDECAR_URL', 'http://localhost:3000'),
-        'token' => env('MCP_SERVICE_TOKEN'),
+        // 'token' => env('MCP_SERVICE_TOKEN'),
         'client_app_id' => env('MCP_SIDECARD_CLIENT_APP_ID'),
         'client_secret' => env('MCP_SIDECARD_CLIENT_SECRET'),
         'global_concurrency' => (int) env('AI_GLOBAL_CONCURRENCY', 2),

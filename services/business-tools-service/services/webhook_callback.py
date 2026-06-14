@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any
 from core.config import settings
 from core.logger import mcp_logger
 from core.http import get_client
+from core.security import generate_laravel_hmac_headers
 
 
 class WebhookDeliveryError(Exception):
@@ -90,24 +91,7 @@ class WebhookCallbackService:
                 f"Allowed: {', '.join(self._allowed_domains)}"
             )
 
-    def _sign_payload(self, payload_bytes: bytes, secret: str) -> tuple:
-        """
-        Generate HMAC-SHA256 signature for the payload.
 
-        Parameters:
-            payload_bytes: The raw bytes of the JSON payload.
-            secret: The signing secret.
-
-        Returns:
-            tuple: (signature_hex, timestamp_str)
-        """
-        timestamp = str(time.time())
-        signature = hmac.new(
-            secret.encode(),
-            timestamp.encode() + payload_bytes,
-            hashlib.sha256
-        ).hexdigest()
-        return signature, timestamp
 
     async def deliver(
         self,
@@ -155,7 +139,7 @@ class WebhookCallbackService:
 
         # Determine signing secret: per-caller > env fallback
         # DATA: SECRET — never log the actual secret value
-        effective_secret = signing_secret or settings.MCP_SIDECAR_CRM_SERVICE_TOKEN
+        effective_secret = signing_secret or settings.LARAVEL_APP_SECRET
         
         # Build headers
         headers = {
@@ -164,9 +148,8 @@ class WebhookCallbackService:
 
         # Sign the payload if we have a secret
         if effective_secret:
-            signature, timestamp = self._sign_payload(payload_bytes, effective_secret)
-            headers["X-Signature"] = signature
-            headers["X-Timestamp"] = timestamp
+            hmac_headers = generate_laravel_hmac_headers(payload_bytes, settings.LARAVEL_APP_ID, effective_secret)
+            headers.update(hmac_headers)
 
         # Merge caller's custom headers (lower priority than signing headers)
         if custom_headers:

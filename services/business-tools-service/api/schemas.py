@@ -41,7 +41,7 @@ class CallbackConfig(BaseModel):
         url: The callback endpoint to POST results to.
         method: HTTP method for callback (POST or PUT).
         signing_secret: HMAC-SHA256 secret for signing the callback payload.
-                        If None, falls back to the env MCP_SIDECAR_CRM_SERVICE_TOKEN.
+                        If None, falls back to the env LARAVEL_APP_SECRET.
         headers: Additional headers to include in the callback request.
         timeout_seconds: Max wait time for the callback HTTP request.
         max_retries: Number of retry attempts on 5xx / network errors.

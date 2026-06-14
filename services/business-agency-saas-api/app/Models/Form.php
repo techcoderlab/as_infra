@@ -58,15 +58,15 @@ class Form extends Model
     public function triggerWebhooks(string $event, array $payloadData = []): void
     {
         if (empty($payloadData)) {
-            throw new \Exception("Webhook payload data is required.");
+            throw new \Exception('Webhook payload data is required.');
         }
 
         if (empty($event)) {
-            throw new \Exception("Webhook event is required.");
+            throw new \Exception('Webhook event is required.');
         }
 
         if (empty($this->getKey())) {
-            throw new \Exception("Webhook form ID is required.");
+            throw new \Exception('Webhook form ID is required.');
         }
         // 5. Webhook Logic (Read Cache + Dispatch)
         // We can do this outside the transaction to keep the transaction block short.

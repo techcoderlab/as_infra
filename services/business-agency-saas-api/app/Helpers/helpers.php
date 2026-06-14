@@ -124,7 +124,6 @@ if (!function_exists('sanitize_payload')) {
      */
     function clean_and_decode_json(string $text): array
     {
-        Log::error($text);
         if (empty(trim($text))) {
             return [
                 'error' => true,
@@ -151,8 +150,6 @@ if (!function_exists('sanitize_payload')) {
         if (json_last_error() === JSON_ERROR_NONE) {
             return $data;
         }
-
-        // Log::error("JSON Decode Failed. Raw Text: " . $text);
 
         // 5. Final Fallback (Always return the structure the rest of your app expects)
         return [
@@ -330,10 +327,10 @@ if (!function_exists('is_valid_signature')) {
     /**
      * Creates an HMAC SHA-256 cryptographic signature for API requests.
      *
-     * @param string $secret    The unique developer/app secret (e.g., sk_live_...)
-     * @param string $timestamp The current UNIX timestamp string
-     * @param string $jsonBody  The raw request payload body
-     * @return string           The hex-encoded signature
+     * @param  string  $secret  The unique developer/app secret (e.g., sk_live_...)
+     * @param  string  $timestamp  The current UNIX timestamp string
+     * @param  string  $jsonBody  The raw request payload body
+     * @return string The hex-encoded signature
      */
     function create_valid_signature(string $secret, string $timestamp, string $jsonBody): string
     {

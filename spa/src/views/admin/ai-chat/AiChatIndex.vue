@@ -21,6 +21,7 @@
         :key="chat.id"
         class="card p-6 flex flex-col h-full hover:shadow-md transition-shadow"
       >
+        <template v-for="agent in [agentSlugs.find(a => a.id === chat.ai_agent_id)]" :key="chat.id + '-status'">
         <div class="flex justify-between items-center mb-4">
           <div class="flex items-center gap-3">
             <!-- If avatar_url is present, show it, otherwise show the first letter of the name -->
@@ -36,29 +37,48 @@
               <h3 class="font-bold text-slate-900 dark:text-white">{{ chat.name }}</h3>
             </div>
           </div>
-          <span
-            :class="[
-              'w-2 h-2 rounded-full',
-              statuses[chat.id] === 'active' ? 'bg-emerald-500' : 'bg-red-500',
-            ]"
-          ></span>
+
+        <!-- We use a single-item v-for array to mock a local variable assignment -->
+        
+          <span class="relative flex h-4 w-4 flex-shrink-0">
+            <span
+              v-if="agent?.is_active"
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+            ></span>
+            <span
+              :class="[
+                'relative inline-flex rounded-full h-4 w-4',
+                agent.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+              ]"
+              :title="agent?.is_active ? 'Active' : 'Inactive'"
+            ></span>
+          </span>
+
+          
         </div>
         <div class="flex-1 mb-6">
-          <label class="form-label mt-2">Chat Integration</label>
+          <label class="form-label mt-2">Agent</label>
           <div
             class="text-xs font-mono bg-slate-50 dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-800 break-all"
           >
             {{
               chat.webhook_url ||
-              'Agent: ' + agentSlugs.find((agent) => agent.id === chat.ai_agent_id)?.slug
+              agent?.slug + (!agent?.is_active ? " is temporarily deactivated" : "")
             }}
           </div>
         </div>
 
         <div class="flex gap-2 mt-auto">
-          <router-link :to="`/admin/ai-chats/${chat.id}`" class="btn-primary flex-1"
-            >Chat</router-link
+
+          
+          <router-link 
+            :to="agent?.is_active ? `/admin/ai-chats/${chat.id}` : ''" 
+            class="btn-primary flex-1 text-center transition-all"
+            :class="{ 'opacity-50 cursor-not-allowed pointer-events-none select-none': !agent?.is_active }"
           >
+            Open Chat
+          </router-link>
+
           <button @click="openModal(chat)" class="btn-icon">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -80,6 +100,8 @@
             </svg>
           </button>
         </div>
+        </template>
+
       </div>
     </div>
 
@@ -199,6 +221,8 @@ async function loadChats() {
       chats.value = data.chats
       agentSlugs.value = data.agents
     }
+
+    // console.log(data.agents)
 
     // const { data } = await request.get('/ai-chats')
     // chats.value = data.chats

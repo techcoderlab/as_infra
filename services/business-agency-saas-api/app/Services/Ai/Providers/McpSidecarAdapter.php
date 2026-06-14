@@ -1,31 +1,18 @@
 <?php
 
-
-
 namespace App\Services\Ai\Providers;
 
-
-
 use App\Services\Ai\Contracts\LlmProviderInterface;
-
 use App\Services\Ai\DTO\WorkflowPayload;
-
 use Illuminate\Support\Facades\Http;
-
 use Illuminate\Support\Facades\Log;
-
 use Illuminate\Support\Str;
-
-
 
 class McpSidecarAdapter implements LlmProviderInterface
 {
-
     // Reduced timeout: We only care about the handoff.
 
     private $requestTimeout = 2;
-
-
 
     public function __construct(
 
@@ -35,10 +22,7 @@ class McpSidecarAdapter implements LlmProviderInterface
 
         protected string $client_secret
 
-    ) {
-    }
-
-
+    ) {}
 
     public function process(WorkflowPayload $payload, $promiseErrorCallback = null): array
     {
@@ -47,8 +31,6 @@ class McpSidecarAdapter implements LlmProviderInterface
 
     }
 
-
-
     public function supportsStreaming(): bool
     {
 
@@ -56,20 +38,15 @@ class McpSidecarAdapter implements LlmProviderInterface
 
     }
 
-
-
     private function processAgentEnqueue($payload, $promiseErrorCallback = null)
     {
 
         $timestamp = time();
 
-        $url = rtrim($this->baseUrl, '/') . '/v1/agent/enqueue';
+        $url = rtrim($this->baseUrl, '/').'/v1/agent/enqueue';
 
         $jobUuid = $payload->getTempValue('job_uuid') ?? (string) Str::uuid();
 
-        Log::error("History now: ", [
-            'history' => $payload->getTempValue('history'),
-        ]);
 
         // 1. FAST CLEANUP & JSON (The Logic we optimized earlier)
 
@@ -77,7 +54,7 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             'job_uuid' => $jobUuid,
 
-            'webhook_url' => config('services.mcp_sidecar.webhook_base_url') . '/api/mcp/callback/ai-result',
+            'webhook_url' => config('services.mcp_sidecar.webhook_base_url').'/api/mcp/callback/ai-result',
 
             'provider' => $payload->context['agent_config']['provider'],
 
@@ -103,19 +80,16 @@ class McpSidecarAdapter implements LlmProviderInterface
 
         ];
 
-
-
         // Robust & Speedy filtering
 
-        $jsonBody = json_encode(array_filter($data, fn($v) => $v !== null && $v !== '' && $v !== []));
+        $jsonBody = json_encode(array_filter($data, fn ($v) => $v !== null && $v !== '' && $v !== []));
 
         // $signature = hash_hmac('sha256', $timestamp . $jsonBody, $this->client_secret);
 
+        $appId = $this->client_app_id;
+        $secret = $this->client_secret;
 
-
-        $signature = create_valid_signature($this->client_secret, $timestamp, $jsonBody);
-
-
+        $signature = create_valid_signature($secret, $timestamp, $jsonBody);
 
         // 2. TRUE ASYNC HANDOFF (No .wait())
 
@@ -123,7 +97,7 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             ->withHeaders([
 
-                'X-App-Id' => $this->client_app_id,
+                'X-App-Id' => $appId,
 
                 'X-Signature' => $signature,
 
@@ -143,8 +117,6 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             ->post($url);
 
-
-
         // ATTACH THE ERROR HANDLER
 
         if ($promiseErrorCallback) {
@@ -153,34 +125,24 @@ class McpSidecarAdapter implements LlmProviderInterface
 
                 // This runs if the sidecar is down or the request fails
 
-                Log::error("[AI ADAPTER]: Async Handoff Failed for {$jobUuid}: " . $exception->getMessage());
-
+                Log::error("[AI ADAPTER]: Async Handoff Failed for {$jobUuid}: ".$exception->getMessage());
 
                 $promiseErrorCallback($exception);
 
             });
 
-
-
             /**
+             * CRITICAL: Settle the promise.
 
-            * CRITICAL: Settle the promise.
+             * wait(false) tells Guzzle: "Start sending now, but don't throw an
 
-            * wait(false) tells Guzzle: "Start sending now, but don't throw an
-
-            * exception here if it fails; let the .catch() handle it."
-
-            */
-
+             * exception here if it fails; let the .catch() handle it."
+             */
             $promise->wait(false);
 
         }
 
-
-
-        Log::error("[AI ADAPTER]: AI Job {$jobUuid} enqueued successfully");
-
-
+        Log::info("[AI ADAPTER]: AI Job {$jobUuid} enqueued successfully");
 
         return [
 
@@ -191,5 +153,4 @@ class McpSidecarAdapter implements LlmProviderInterface
         ];
 
     }
-
 }

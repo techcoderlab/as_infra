@@ -12,7 +12,8 @@ class AgentTriggerListener
 {
     public function __construct(
         protected readonly AiGateway $gateway
-    ) {}
+    ) {
+    }
 
     public function handle(object $event): void
     {
@@ -21,7 +22,7 @@ class AgentTriggerListener
          */
         $target = $event->model ?? null;
 
-        if (! $target || empty($target->tenant_id)) {
+        if (!$target || empty($target->tenant_id)) {
             Log::error('[AgentTriggerListener]: Missing target or tenant_id', [
                 'event' => get_class($event),
             ]);
@@ -43,7 +44,7 @@ class AgentTriggerListener
             ->get();
 
         if ($triggers->isEmpty()) {
-            Log::error('[AgentTriggerListener]: No Agent Triggers found for Event: '.get_class($event));
+            Log::error('[AgentTriggerListener]: No Agent Triggers found for Event: ' . get_class($event));
 
             return; // Silent exit — normal condition
         }
@@ -54,14 +55,14 @@ class AgentTriggerListener
         foreach ($triggers as $trigger) {
             $agent = $trigger->aiAgent;
 
-            if (! $agent || ! $agent->is_active) {
-                Log::info('[AgentTriggerListener]: Skipping invalid or inactive Agent: '.$agent->slug);
+            if (!$agent || !$agent->is_active) {
+                Log::info('[AgentTriggerListener]: Skipping invalid or inactive Agent: ' . $agent->slug);
 
                 continue;
             }
 
             try {
-                Log::info('[AgentTriggerListener]: Entering in Ai Gateway for  Agent: '.$agent->slug, [
+                Log::info('[AgentTriggerListener]: Entering in Ai Gateway for  Agent: ' . $agent->slug, [
                     'event' => get_class($event),
                     'target' => $target->getKey() ?? null,
                     'trigger' => $trigger->getKey(),

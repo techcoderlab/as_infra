@@ -5,6 +5,8 @@ from core.config import settings
 from core.http import get_client
 from core.logger import mcp_logger
 from core.decorators import tool_timeout
+import json
+from core.security import generate_laravel_hmac_headers
 
 # 1. Define the Arguments Schema
 class LeadReadArgs(BaseModel):
@@ -75,16 +77,21 @@ class LeadReaderTool(BaseTool):
         
         mcp_logger.info(f"[LeadReaderTool] Tenant:{tenant_id} Filter:{date_filter} Query:{query}")
         
+        payload_bytes = json.dumps(payload).encode('utf-8')
+        hmac_headers = generate_laravel_hmac_headers(payload_bytes, settings.LARAVEL_APP_ID, settings.LARAVEL_APP_SECRET)
+        
+        req_headers = {
+            "x-tenant-id": str(tenant_id),
+            "ngrok-skip-browser-warning": "true",
+            "Content-Type": "application/json"
+        }
+        req_headers.update(hmac_headers)
+
         try:
             response = await client.post(
                 url, 
-                json=payload, 
-                headers={
-                    "x-service-token": settings.MCP_SIDECAR_CRM_SERVICE_TOKEN,
-                    "x-tenant-id": str(tenant_id),
-                    "ngrok-skip-browser-warning": "true",
-                    "Content-Type": "application/json"
-                },
+                content=payload_bytes, 
+                headers=req_headers,
                 timeout=15.0 # Robustness
             )
             

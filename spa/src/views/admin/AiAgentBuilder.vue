@@ -1,3 +1,8 @@
+<!--
+# ─────────────────────────────────────────────────────
+# Module   : AiAgentBuilder.vue
+# ─────────────────────────────────────────────────────
+-->
 <script setup>
 import { onMounted, ref } from 'vue'
 import api from '@/utils/request'
@@ -87,9 +92,22 @@ const openEditModal = (agent) => {
     currentTrigger = typeof t === 'object' ? t.event_class : t
   }
 
+  let toolsArray = []
+  if (data.tools) {
+    if (Array.isArray(data.tools)) {
+      toolsArray = data.tools
+    } else if (typeof data.tools === 'string') {
+      try {
+        toolsArray = JSON.parse(data.tools)
+      } catch {
+        toolsArray = []
+      }
+    }
+  }
+
   form.value = {
     ...data,
-    tools: data.tools || [],
+    tools: toolsArray,
     selected_trigger: currentTrigger, // Bind to the radio button
   }
 
@@ -130,7 +148,7 @@ const deleteAgent = async (agent) => {
   try {
     await api.delete(`/ai-agents/${agent.id}`)
     agents.value = agents.value.filter((a) => a.id !== agent.id)
-  } catch (e) {
+  } catch {
     alert('Failed to delete agent')
   }
 }
@@ -167,20 +185,37 @@ onMounted(fetchData)
             <th>Brain / Model</th>
             <th>Trigger</th>
             <th>Tools</th>
-            <th>Status</th>
             <th class="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="agents.length === 0">
-            <td colspan="6" class="text-center py-12 text-slate-500 italic">
+            <td colspan="5" class="text-center py-12 text-slate-500 italic">
               No agents configured. Create one to get started.
             </td>
           </tr>
           <tr v-for="agent in agents" :key="agent.id">
             <td>
-              <div class="font-bold text-slate-900 dark:text-white">{{ agent.name }}</div>
-              <div class="text-xs text-slate-400 font-mono">{{ agent.slug }}</div>
+              <div class="flex items-center gap-4">
+                <!-- Modern Visual Status Indicator -->
+                <span class="relative flex h-4 w-4 flex-shrink-0">
+                  <span
+                    v-if="agent.is_active"
+                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+                  ></span>
+                  <span
+                    :class="[
+                      'relative inline-flex rounded-full h-4 w-4',
+                      agent.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                    ]"
+                    :title="agent.is_active ? 'Active' : 'Inactive'"
+                  ></span>
+                </span>
+                <div>
+                  <div class="font-bold text-slate-900 dark:text-white">{{ agent.name }}</div>
+                  <div class="text-xs text-slate-400 font-mono">{{ agent.slug }}</div>
+                </div>
+              </div>
             </td>
             <td>
               <div class="flex flex-col">
@@ -210,17 +245,23 @@ onMounted(fetchData)
               </div>
             </td>
             <td>
-              <span class="text-xs text-slate-500"> {{ agent.tools?.length || 0 }} enabled </span>
-            </td>
-            <td>
-              <span
-                :class="[
-                  'badge',
-                  agent.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600',
-                ]"
-              >
-                {{ agent.is_active ? 'Active' : 'Inactive' }}
-              </span>
+              <div v-if="agent.tools?.length" class="relative group inline-block">
+                <span class="text-xs text-blue-600 dark:text-blue-400 font-medium underline decoration-dashed cursor-help">
+                  {{ agent.tools.length }} enabled
+                </span>
+                <!-- Tooltip -->
+                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 hidden group-hover:block bg-slate-800 dark:bg-slate-950 text-white text-xs rounded-lg p-2.5 shadow-xl z-20 border border-slate-700">
+                  <div class="font-bold mb-1.5 text-slate-300 border-b border-slate-700 pb-1">Enabled Tools</div>
+                  <ul class="list-disc pl-4 space-y-1 text-left">
+                    <li v-for="t in agent.tools" :key="t" class="font-mono text-slate-200">
+                      {{ availableTools.find(tool => tool.id === t)?.label || t }}
+                    </li>
+                  </ul>
+                  <!-- Arrow -->
+                  <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800 dark:border-t-slate-950"></div>
+                </div>
+              </div>
+              <span v-else class="text-xs text-slate-400 italic">None</span>
             </td>
             <td class="text-right space-x-2">
               <button

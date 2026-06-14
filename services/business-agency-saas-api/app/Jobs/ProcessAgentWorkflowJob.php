@@ -12,7 +12,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -80,7 +79,6 @@ class ProcessAgentWorkflowJob implements ShouldQueue
             ]
         );
 
-
         // $targetType = 'App\\Models\\' . $this->payload->targetType;
 
         // $aiJobRecord = AiJob::where('tenant_id', $this->tenantId)
@@ -127,13 +125,13 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                 'error_message' => 'AI Job failed: Missing Agent or API Key at execution time.',
             ]);
             Log::error('[ProcessAgentWorkflowJob]: Missing Agent/API Key during execution.', ['slug' => $this->payload->context['agent_config']['slug']]);
+
             return;
         }
 
         // Inject sensitive data back into the payload dynamically
         $context = $this->payload->context;
         $context['agent_config']['api_key'] = $agent->integration->value['api_key'];
-
 
         $history = [];
         if (strtolower($this->payload->targetType) == 'lead' && !empty($agent->context_window_size)) {
@@ -190,7 +188,7 @@ class ProcessAgentWorkflowJob implements ShouldQueue
         $globalLimiterKey = 'ai-global-concurrency';
         $maxGlobal = config('services.mcp_sidecar.global_concurrency');
         if (!RateLimiter::attempt($globalLimiterKey, $maxGlobal, fn() => true, 1)) {
-            Log::error('[ProcessAgentWorkflowJob]: Global concurrency limit hit, backing off', [
+            Log::info('[ProcessAgentWorkflowJob]: Global concurrency limit hit, backing off', [
                 'tenant' => $this->tenantId,
             ]);
 
@@ -213,7 +211,7 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                 $decay = 180 // 3 minutes
             )
         ) {
-            Log::error('[ProcessAgentWorkflowJob]: Tenant concurrency limit hit, backing off', [
+            Log::info('[ProcessAgentWorkflowJob]: Tenant concurrency limit hit, backing off', [
                 'tenant' => $this->tenantId,
             ]);
             // Graceful backoff
@@ -266,7 +264,7 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                 ]);
             });
 
-            Log::error("[ProcessAgentWorkflowJob]: Handoff initiated for {$aiJobRecord->job_uuid}");
+            Log::info("[ProcessAgentWorkflowJob]: Handoff initiated for {$aiJobRecord->job_uuid}");
         } catch (\Exception $e) {
             // Only hits if there's a structural failure (e.g., payload error)
             $aiJobRecord->update([

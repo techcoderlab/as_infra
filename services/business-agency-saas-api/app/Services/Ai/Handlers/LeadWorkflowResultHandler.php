@@ -61,7 +61,6 @@ class LeadWorkflowResultHandler implements WorkflowResultHandler
             Log::error('[LeadWorkflowResultHandler]: '.$e->getMessage());
         }
 
-        
     }
 
     /**
@@ -92,7 +91,6 @@ class LeadWorkflowResultHandler implements WorkflowResultHandler
 
             LeadActivity::insert([$activity]);
         }
-
 
         // $form = $target->form;
         // if($form) {

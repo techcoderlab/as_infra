@@ -49,14 +49,14 @@ class ProcessWhatsAppWebhook implements ShouldQueue
      */
     public function handle()
     {
-        Log::info('Processing ' . self::PLATFORM_LABEL . " Webhook for tenant {$this->tenantId}");
+        Log::info('Processing '.self::PLATFORM_LABEL." Webhook for tenant {$this->tenantId}");
 
         try {
             // Flexible Payload Extraction
             $messages = $this->extractMessages($this->payload);
 
             if (empty($messages)) {
-                Log::error('No messages found in ' . self::PLATFORM_LABEL . ' payload.');
+                Log::error('No messages found in '.self::PLATFORM_LABEL.' payload.');
 
                 return;
             }
@@ -65,7 +65,7 @@ class ProcessWhatsAppWebhook implements ShouldQueue
                 $this->processMessage($msg);
             }
         } catch (\Exception $e) {
-            Log::error('Error processing ' . self::PLATFORM_LABEL . ' webhook: ' . $e->getMessage());
+            Log::error('Error processing '.self::PLATFORM_LABEL.' webhook: '.$e->getMessage());
             // We don't want to fail the job hard if it's a parsing error,
             // but for critical failures we might want to retry.
             // For now, logging is sufficient as per 'Graceful error handling'.
@@ -175,7 +175,7 @@ class ProcessWhatsAppWebhook implements ShouldQueue
                 $activities[] = [
                     'lead_id' => $lead->id,
                     'type' => 'external_system_inserted', // Use consistent type
-                    'content' => 'Lead created from ' . self::PLATFORM_LABEL . " ID {$waId}.",
+                    'content' => 'Lead created from '.self::PLATFORM_LABEL." ID {$waId}.",
                     'metadata' => json_encode([
                         'message_id' => $message['id'] ?? null,
                         'timestamp' => $message['timestamp'] ?? time(),
@@ -185,7 +185,7 @@ class ProcessWhatsAppWebhook implements ShouldQueue
                     'updated_at' => $now,
                 ];
 
-                Log::info("Created new Lead #{$lead->id} from " . self::PLATFORM_LABEL . " ID {$waId}");
+                Log::info("Created new Lead #{$lead->id} from ".self::PLATFORM_LABEL." ID {$waId}");
             }
 
             // Log incoming message activity
@@ -221,7 +221,7 @@ class ProcessWhatsAppWebhook implements ShouldQueue
             $session->last_interaction_at = $now;
             $session->message_count = ($session->message_count ?? 0) + 1;
 
-            if (!$session->exists) {
+            if (! $session->exists) {
                 $session->context_data = [];
             }
 
@@ -236,6 +236,6 @@ class ProcessWhatsAppWebhook implements ShouldQueue
         app(DebounceService::class, ['eventClass' => self::EVENT_CLASS])
             ->trigger($lead, $session);
 
-        Log::info('Logged ' . self::PLATFORM_LABEL . " activity for Lead #{$lead->id}");
+        Log::info('Logged '.self::PLATFORM_LABEL." activity for Lead #{$lead->id}");
     }
 }

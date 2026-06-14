@@ -28,11 +28,14 @@ class Settings(BaseSettings):
         validation_alias="MCP_SIDECAR_LOG_FILE"
     )
     
-    # REMOVE OR DEPRECATE:
-    # Maps env var "SERVICE_TOKEN" -> Class var "MCP_SIDECAR_CRM_SERVICE_TOKEN"
-    MCP_SIDECAR_CRM_SERVICE_TOKEN: str = Field(
+    # Data for Sidecar to authenticate with Laravel
+    LARAVEL_APP_ID: str = Field(
         default="", 
-        validation_alias="SERVICE_TOKEN"
+        validation_alias="LARAVEL_APP_ID"
+    )
+    LARAVEL_APP_SECRET: str = Field(
+        default="", 
+        validation_alias="LARAVEL_APP_SECRET"
     )
 
 

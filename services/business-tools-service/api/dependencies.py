@@ -137,7 +137,12 @@ async def verify_hmac_signature(request: Request):
 
     # 3. Dynamically fetch the Secret from Redis using the App ID
     # This takes <1ms and avoids a heavy PostgreSQL database query
-    developer_secret = await redis_client.get(f"agency-saas-api-database-apikey:{app_id}")
+    try:
+        developer_secret = await redis_client.get(f"agency-saas-api-database-apikey:{app_id}")
+    except Exception as e:
+        import logging
+        logging.error(f"[verify_hmac_signature] Redis fetch failed: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable (auth layer)")
     
     if not developer_secret:
         raise HTTPException(status_code=401, detail="Invalid X-App-Id or key has been revoked")

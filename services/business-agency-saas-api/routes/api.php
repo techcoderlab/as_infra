@@ -34,6 +34,12 @@ Route::middleware(['auth:sanctum', 'throttle:tenant_api', 'check.status', 'log.a
     Route::get('/ai-settings', [AiIntegrationController::class, 'getSettings']);
     Route::post('/ai-settings', [AiIntegrationController::class, 'updateSettings']);
 
+    // External API Keys Management (Super Admin)
+    Route::get('/external-api-keys', [\App\Http\Controllers\Admin\ExternalApiKeyController::class, 'index']);
+    Route::post('/external-api-keys', [\App\Http\Controllers\Admin\ExternalApiKeyController::class, 'store']);
+    Route::delete('/external-api-keys/{id}', [\App\Http\Controllers\Admin\ExternalApiKeyController::class, 'destroy']);
+    Route::post('/external-api-keys/{id}/rotate', [\App\Http\Controllers\Admin\ExternalApiKeyController::class, 'rotate']);
+
     // Tenant Integration Management
     Route::get('/integrations/services', [IntegrationController::class, 'availableServices']);
 
@@ -151,8 +157,9 @@ Route::prefix('public')->group(function () {
     Route::post('/tally/form/submit', [PublicFormController::class, 'tallyFormSubmit'])->middleware('throttle:10,1', 'tracker.validate');
 });
 
-
-Route::post('/mcp/callback/ai-result', [AiWebhookController::class, 'handle'])->name('api.mcp.callback.ai');
+Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->group(function () {
+    Route::post('/mcp/callback/ai-result', [AiWebhookController::class, 'handle'])->name('api.mcp.callback.ai');
+});
 
 // WhatsApp Webhook (Public)
 Route::get('/integrations/whatsapp/webhook/{tenant}', [WhatsAppIntegrationController::class, 'verify']);
@@ -166,228 +173,223 @@ Route::get('/google-business/callback', [GoogleBusinessController::class, 'callb
 
 // Route::get('/ai-jobs/{target_id}/monitor', [AiJobController::class, 'monitor']);
 
-Route::post('/internal/leads/{lead}/update', function (Request $request, $leadId) {
+Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->group(function () {
+    Route::post('/internal/leads/{lead}/update', function (Request $request, $leadId) {
 
-    // 1. Auth & Tenant Guard (Unchanged)
-    if ($request->header('x-service-token') !== config('services.mcp_sidecar.token')) {
-        return response()->json(['error' => 'Unauthorized'], 401);
-    }
-    $tenantId = $request->header('x-tenant-id');
-    if (! $tenantId) {
-        return response()->json(['error' => 'Tenant context missing'], 403);
-    }
-
-    try {
-        app(\App\Services\TenantManager::class)->setTenantById((int) $tenantId);
-
-        // PRE-FILTER: Avoid DB overhead if no data is sent
-        $dataToUpdate = array_filter(
-            $request->only(['temperature', 'status', 'score', 'won', 'payload']),
-            fn ($value) => ! is_null($value)
-        );
-
-        Log::info("MCP Update: Updating lead #{$leadId} with data: ".json_encode($dataToUpdate));
-
-        if (empty($dataToUpdate)) {
-            return response()->json(['success' => true]);
+        // 1. Auth & Tenant Guard (Unchanged)
+        $tenantId = $request->header('x-tenant-id');
+        if (! $tenantId) {
+            return response()->json(['error' => 'Tenant context missing'], 403);
         }
 
-        // ATOMIC EXECUTION
-        DB::transaction(function () use ($leadId, $dataToUpdate) {
-            // LOCK FOR UPDATE: Prevents other requests from touching this lead until finished
-            $lead = \App\Models\Lead::where('id', $leadId)
-                ->lockForUpdate()
-                ->first();
+        try {
+            app(\App\Services\TenantManager::class)->setTenantById((int) $tenantId);
 
-            if (! $lead) {
-                throw new ModelNotFoundException("Lead #{$leadId} not found.");
+            // PRE-FILTER: Avoid DB overhead if no data is sent
+            $dataToUpdate = array_filter(
+                $request->only(['temperature', 'status', 'score', 'won', 'payload']),
+                fn ($value) => ! is_null($value)
+            );
+
+            Log::info("MCP Update: Updating lead #{$leadId} with data: ".json_encode($dataToUpdate));
+
+            if (empty($dataToUpdate)) {
+                return response()->json(['success' => true]);
             }
 
-            $activities = [];
-            $finalUpdateData = []; // Use this to be 100% sure what we are updating
+            // ATOMIC EXECUTION
+            DB::transaction(function () use ($leadId, $dataToUpdate) {
+                // LOCK FOR UPDATE: Prevents other requests from touching this lead until finished
+                $lead = \App\Models\Lead::where('id', $leadId)
+                    ->lockForUpdate()
+                    ->first();
 
-            // 1. Handle Basic Fields
-            $basicFields = ['temperature' => 'temperature', 'status' => 'pipeline', 'score' => 'score', 'won' => 'won'];
-            // $basicUpdate = array_intersect_key($dataToUpdate, $basicFields);
-
-            foreach ($basicFields as $dbKey => $label) {
-
-                if (! isset($dataToUpdate[$dbKey])) {
-                    continue;
+                if (! $lead) {
+                    throw new ModelNotFoundException("Lead #{$leadId} not found.");
                 }
 
-                $newVal = $dataToUpdate[$dbKey];
-                $oldVal = $lead->$dbKey;
+                $activities = [];
+                $finalUpdateData = []; // Use this to be 100% sure what we are updating
 
-                // String-based comparison to handle all types
-                if (strtolower((string) $newVal) === strtolower((string) $oldVal)) {
-                    continue;
-                }
+                // 1. Handle Basic Fields
+                $basicFields = ['temperature' => 'temperature', 'status' => 'pipeline', 'score' => 'score', 'won' => 'won'];
+                // $basicUpdate = array_intersect_key($dataToUpdate, $basicFields);
 
-                $finalUpdateData[$dbKey] = $newVal;
+                foreach ($basicFields as $dbKey => $label) {
 
-                $displayVal = is_bool($newVal) ? ($newVal ? 'Yes' : 'No') : ucwords(str_replace(['_', '-'], ' ', (string) $newVal));
-
-                $activities[] = [
-                    'lead_id' => $lead->getKey(),
-                    'type' => 'mcp_updated',
-                    'content' => 'AI updated '.ucwords($label)." to: {$displayVal}",
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-            }
-
-            // 2. Handle Payload Merging
-            if (isset($dataToUpdate['payload']) && is_array($dataToUpdate['payload'])) {
-
-                // Ensure $currentPayload is always a clean array, regardless of DB cast settings
-                $currentPayload = $lead->payload;
-                if (is_string($currentPayload)) {
-                    $currentPayload = json_decode($currentPayload, true) ?: [];
-                }
-                $currentPayload = is_array($currentPayload) ? $currentPayload : [];
-
-                foreach ($dataToUpdate['payload'] as $subKey => $subVal) {
-
-                    // 1. Robust Equality Check (Handles string vs int vs bool comparison)
-                    $existingVal = $currentPayload[$subKey] ?? null;
-
-                    // Use loose comparison but check for nulls to avoid "0 == null" false positives
-                    if ($existingVal !== null && strtolower((string) $existingVal) === strtolower((string) $subVal)) {
+                    if (! isset($dataToUpdate[$dbKey])) {
                         continue;
                     }
 
-                    // 2. Data Cleaning
-                    $cleanKey = strip_tags(str_replace(['_', '-'], ' ', $subKey));
-                    $displayVal = is_bool($subVal) ? ($subVal ? 'Yes' : 'No') : (string) $subVal;
+                    $newVal = $dataToUpdate[$dbKey];
+                    $oldVal = $lead->$dbKey;
 
-                    // 3. Update the payload
-                    $currentPayload[$subKey] = $subVal;
+                    // String-based comparison to handle all types
+                    if (strtolower((string) $newVal) === strtolower((string) $oldVal)) {
+                        continue;
+                    }
 
-                    // 4. Activity Logging with Guard
-                    // if ($lead->getKey()) {
+                    $finalUpdateData[$dbKey] = $newVal;
+
+                    $displayVal = is_bool($newVal) ? ($newVal ? 'Yes' : 'No') : ucwords(str_replace(['_', '-'], ' ', (string) $newVal));
+
                     $activities[] = [
                         'lead_id' => $lead->getKey(),
                         'type' => 'mcp_updated',
-                        'content' => 'Collected '.ucwords($cleanKey).': '.$displayVal,
+                        'content' => 'AI updated '.ucwords($label)." to: {$displayVal}",
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
-                    // }
                 }
 
-                // Assign the merged array back
-                $finalUpdateData['payload'] = $currentPayload;
-            }
+                // 2. Handle Payload Merging
+                if (isset($dataToUpdate['payload']) && is_array($dataToUpdate['payload'])) {
 
-            // 5. Atomic Update only with verified data
-            if (! empty($finalUpdateData)) {
-                $lead->updateQuietly($finalUpdateData);
-            }
-
-            // 6. Fail-safe Bulk Insert
-            if (! empty($activities)) {
-                \App\Models\LeadActivity::insert($activities);
-            }
-        });
-
-        return response()->json(['success' => true]);
-    } catch (ModelNotFoundException $e) {
-        return response()->json(['error' => $e->getMessage()], 404);
-    } catch (\Throwable $e) {
-        \Log::error('MCP Update Error: '.$e->getMessage());
-
-        return response()->json(['error' => 'Internal Server Error'], 500);
-    }
-});
-
-Route::post('/internal/leads/search', function (Request $request) {
-    // 1. Fast Security Exit
-    if ($request->header('x-service-token') !== config('services.mcp_sidecar.token')) {
-        return response()->json(['error' => 'Unauthorized'], 401);
-    }
-
-    $tenantId = $request->header('x-tenant-id');
-    if (! $tenantId) {
-        return response()->json(['error' => 'Tenant context missing'], 403);
-    }
-
-    try {
-        // 2. Set Tenant Context
-        app(\App\Services\TenantManager::class)->setTenantById((int) $tenantId);
-
-        $limit = $request->integer('limit', 5); // Use integer() for safer casting
-        $leadsQuery = \App\Models\Lead::query();
-
-        // 3. Robust Date Filtering
-        if ($request->filled('date_filter')) {
-            switch ($request->input('date_filter')) {
-                case 'today':
-                    $leadsQuery->whereDate('created_at', Carbon::today());
-                    break;
-                case 'this_week':
-                    $leadsQuery->whereBetween('created_at', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]);
-                    break;
-                case 'this_month':
-                    $leadsQuery->whereMonth('created_at', Carbon::now()->month)
-                        ->whereYear('created_at', Carbon::now()->year);
-                    break;
-                case 'ytd':
-                    $leadsQuery->whereBetween('created_at', [Carbon::now()->startOfYear(), Carbon::now()]);
-                    break;
-                case 'custom':
-                    if ($request->filled(['start_date', 'end_date'])) {
-                        $leadsQuery->whereBetween('created_at', [
-                            Carbon::parse($request->input('start_date'))->startOfDay(),
-                            Carbon::parse($request->input('end_date'))->endOfDay(),
-                        ]);
+                    // Ensure $currentPayload is always a clean array, regardless of DB cast settings
+                    $currentPayload = $lead->payload;
+                    if (is_string($currentPayload)) {
+                        $currentPayload = json_decode($currentPayload, true) ?: [];
                     }
-                    break;
-            }
-        }
+                    $currentPayload = is_array($currentPayload) ? $currentPayload : [];
 
-        // 4. Text Search
-        if ($request->filled('query')) {
-            $searchTerm = "%{$request->input('query')}%";
-            $leadsQuery->where(function (Builder $q) use ($searchTerm) {
-                $q->where('id', 'like', $searchTerm)
-                    ->orWhere('notes', 'like', $searchTerm)
-                    ->orWhere('status', 'like', $searchTerm)
-                    ->orWhere('temperature', 'like', $searchTerm)
-                    ->orWhere('source', 'like', $searchTerm)
-                    ->orWhereRaw('CAST(payload AS TEXT) ILIKE ?', [$searchTerm]);
+                    foreach ($dataToUpdate['payload'] as $subKey => $subVal) {
+
+                        // 1. Robust Equality Check (Handles string vs int vs bool comparison)
+                        $existingVal = $currentPayload[$subKey] ?? null;
+
+                        // Use loose comparison but check for nulls to avoid "0 == null" false positives
+                        if ($existingVal !== null && strtolower((string) $existingVal) === strtolower((string) $subVal)) {
+                            continue;
+                        }
+
+                        // 2. Data Cleaning
+                        $cleanKey = strip_tags(str_replace(['_', '-'], ' ', $subKey));
+                        $displayVal = is_bool($subVal) ? ($subVal ? 'Yes' : 'No') : (string) $subVal;
+
+                        // 3. Update the payload
+                        $currentPayload[$subKey] = $subVal;
+
+                        // 4. Activity Logging with Guard
+                        // if ($lead->getKey()) {
+                        $activities[] = [
+                            'lead_id' => $lead->getKey(),
+                            'type' => 'mcp_updated',
+                            'content' => 'Collected '.ucwords($cleanKey).': '.$displayVal,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                        // }
+                    }
+
+                    // Assign the merged array back
+                    $finalUpdateData['payload'] = $currentPayload;
+                }
+
+                // 5. Atomic Update only with verified data
+                if (! empty($finalUpdateData)) {
+                    $lead->updateQuietly($finalUpdateData);
+                }
+
+                // 6. Fail-safe Bulk Insert
+                if (! empty($activities)) {
+                    \App\Models\LeadActivity::insert($activities);
+                }
             });
+
+            return response()->json(['success' => true]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['error' => $e->getMessage()], 404);
+        } catch (\Throwable $e) {
+            \Log::error('MCP Update Error: '.$e->getMessage());
+
+            return response()->json(['error' => 'Internal Server Error'], 500);
+        }
+    });
+
+    Route::post('/internal/leads/search', function (Request $request) {
+        // 1. Fast Security Exit
+        $tenantId = $request->header('x-tenant-id');
+        if (! $tenantId) {
+            return response()->json(['error' => 'Tenant context missing'], 403);
         }
 
-        // 5. Optimization: Get Count and Results in a way that minimizes DB load
-        // Use a clone to ensure count doesn't interfere with the limit/offset of the main query
-        $totalCount = (clone $leadsQuery)->count();
+        try {
+            // 2. Set Tenant Context
+            app(\App\Services\TenantManager::class)->setTenantById((int) $tenantId);
 
-        $leads = $leadsQuery->orderBy('created_at', 'desc') // Explicit column name for speed
-            ->limit($limit)
-            ->get();
+            $limit = $request->integer('limit', 5); // Use integer() for safer casting
+            $leadsQuery = \App\Models\Lead::query();
 
-        // 6. Memory Efficient Mapping
-        $results = $leads->map(function ($lead) {
-            // We strip any existing relations to keep the payload tiny
-            $payload = is_array($lead->payload) ? $lead->payload : json_decode($lead->payload, true) ?? [];
+            // 3. Robust Date Filtering
+            if ($request->filled('date_filter')) {
+                switch ($request->input('date_filter')) {
+                    case 'today':
+                        $leadsQuery->whereDate('created_at', Carbon::today());
+                        break;
+                    case 'this_week':
+                        $leadsQuery->whereBetween('created_at', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]);
+                        break;
+                    case 'this_month':
+                        $leadsQuery->whereMonth('created_at', Carbon::now()->month)
+                            ->whereYear('created_at', Carbon::now()->year);
+                        break;
+                    case 'ytd':
+                        $leadsQuery->whereBetween('created_at', [Carbon::now()->startOfYear(), Carbon::now()]);
+                        break;
+                    case 'custom':
+                        if ($request->filled(['start_date', 'end_date'])) {
+                            $leadsQuery->whereBetween('created_at', [
+                                Carbon::parse($request->input('start_date'))->startOfDay(),
+                                Carbon::parse($request->input('end_date'))->endOfDay(),
+                            ]);
+                        }
+                        break;
+                }
+            }
 
-            return array_merge([
-                'id' => $lead->id,
-                'created_at' => $lead->created_at->diffForHumans(), // AI prefers relative time (e.g. "2 hours ago")
-                'temperature' => $lead->temperature,
-                'status' => $lead->status,
-                'source' => $lead->source,
-            ], $payload);
-        });
+            // 4. Text Search
+            if ($request->filled('query')) {
+                $searchTerm = "%{$request->input('query')}%";
+                $leadsQuery->where(function (Builder $q) use ($searchTerm) {
+                    $q->where('id', 'like', $searchTerm)
+                        ->orWhere('notes', 'like', $searchTerm)
+                        ->orWhere('status', 'like', $searchTerm)
+                        ->orWhere('temperature', 'like', $searchTerm)
+                        ->orWhere('source', 'like', $searchTerm)
+                        ->orWhereRaw('CAST(payload AS TEXT) ILIKE ?', [$searchTerm]);
+                });
+            }
 
-        return response()->json([
-            'count' => $totalCount,
-            'results' => $results,
-        ]);
-    } catch (\Throwable $e) {
-        \Log::error('MCP Search Error: '.$e->getMessage());
+            // 5. Optimization: Get Count and Results in a way that minimizes DB load
+            // Use a clone to ensure count doesn't interfere with the limit/offset of the main query
+            $totalCount = (clone $leadsQuery)->count();
 
-        return response()->json(['error' => 'Internal Server Error'], 500);
-    }
+            $leads = $leadsQuery->orderBy('created_at', 'desc') // Explicit column name for speed
+                ->limit($limit)
+                ->get();
+
+            // 6. Memory Efficient Mapping
+            $results = $leads->map(function ($lead) {
+                // We strip any existing relations to keep the payload tiny
+                $payload = is_array($lead->payload) ? $lead->payload : json_decode($lead->payload, true) ?? [];
+
+                return array_merge([
+                    'id' => $lead->id,
+                    'created_at' => $lead->created_at->diffForHumans(), // AI prefers relative time (e.g. "2 hours ago")
+                    'temperature' => $lead->temperature,
+                    'status' => $lead->status,
+                    'source' => $lead->source,
+                ], $payload);
+            });
+
+            return response()->json([
+                'count' => $totalCount,
+                'results' => $results,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('MCP Search Error: '.$e->getMessage());
+
+            return response()->json(['error' => 'Internal Server Error'], 500);
+        }
+    });
 });

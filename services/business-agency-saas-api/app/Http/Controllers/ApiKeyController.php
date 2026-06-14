@@ -2,11 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ExternalApiKey;
 use App\Services\TenantManager;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Redis;
 use Illuminate\Validation\Rule;
 
 class ApiKeyController extends Controller
@@ -32,7 +29,7 @@ class ApiKeyController extends Controller
             $moduleLabel = $module['name'];
 
             // 1. Find all scopes that start with "leads:" (for example)
-            $scopes = array_filter($allowedScopes, fn($s) => str_starts_with($s, $moduleId . ':'));
+            $scopes = array_filter($allowedScopes, fn ($s) => str_starts_with($s, $moduleId.':'));
 
             $mappedScopes = [];
 
@@ -40,7 +37,7 @@ class ApiKeyController extends Controller
                 // e.g., "leads:view" -> $action = "view"
                 [$mod, $action] = explode(':', $scope);
 
-                if (!isset($actionLabels[$action])) {
+                if (! isset($actionLabels[$action])) {
                     continue;
                 }
 
@@ -57,7 +54,7 @@ class ApiKeyController extends Controller
                 ];
             }
 
-            if (!empty($mappedScopes)) {
+            if (! empty($mappedScopes)) {
                 $groups[] = [
                     'name' => $moduleLabel, // e.g., "Leads Management" from DB
                     'scopes' => $mappedScopes,
@@ -94,10 +91,6 @@ class ApiKeyController extends Controller
                 })->values()->toArray();
         }
 
-        $message = $this->generateApiKey($request);
-
-        Log::error("Client Key: ", $message);
-
         // 3. Return keys + dynamically built permission groups
         return response()->json([
             'keys' => $request->user()->tokens()
@@ -110,42 +103,6 @@ class ApiKeyController extends Controller
                 config('sanctum.allowed_scopes', []), // The universe of valid scopes
             ),
         ]);
-    }
-
-
-    // Temp function - need to remove later
-
-    public function generateApiKey(Request $request)
-    {
-        $appId = 'app_' . bin2hex(random_bytes(8));
-        $plaintextSecret = 'sk_live_' . bin2hex(random_bytes(16));
-
-        // Save to PostgreSQL (ENCRYPTED)
-        // If the database is breached, the hacker gets useless encrypted strings.
-        $apiKey = ExternalApiKey::create([
-            'app_id' => $appId,
-            // encrypt() automatically uses AES-256-CBC/GCM via your APP_KEY
-            'secret' => encrypt($plaintextSecret),
-            'app' => 'main-as-laravel-api',
-            'is_active' => true,
-        ]);
-
-        // Push to Redis (PLAINTEXT)
-        // Redis lives inside your secure Docker/VPC network and is not exposed to the internet.
-        // Storing it plaintext in memory allows FastAPI to read it instantly without needing 
-        // to know Laravel's APP_KEY to decrypt it.
-        Redis::set("apikey:{$appId}", $plaintextSecret);
-
-        return [
-            'app_id' => $appId,
-            'secret' => $plaintextSecret,
-            'message' => 'Please copy your secret now. For security reasons, it will not be shown again.'
-        ];
-        // return response()->json([
-        //     'app_id' => $appId,
-        //     'secret' => $plaintextSecret,
-        //     'message' => 'Please copy your secret now. It will not be shown again.'
-        // ]);
     }
 
     /**

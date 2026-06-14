@@ -20,22 +20,14 @@ class AiWebhookController extends Controller
      */
     public function handle(Request $request)
     {
-        // 1. SECURITY: Verify HMAC
-        if (! $this->isValid($request)) {
-            Log::warning('[AiWebhookController] Invalid Signature', [
-                'ip' => $request->ip(),
-                'headers' => $request->only(['x-timestamp', 'x-signature']),
-            ]);
-
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
+        // 1. SECURITY: Verify HMAC (Now handled by VerifyExternalAppSignature Middleware)
 
         // 2. PARSE DATA
         // Use Laravel's built-in JSON decoding or fallback manually if content-type is missing.
         $data = $request->isJson() ? $request->all() : json_decode($request->getContent(), true);
 
         if (empty($data)) {
-            Log::warning('[AiWebhookController] Empty or Invalid Payload', ['content_summary' => substr($request->getContent(), 0, 100)]);
+            Log::error('[AiWebhookController] Empty or Invalid Payload', ['content_summary' => substr($request->getContent(), 0, 100)]);
 
             return response()->json(['error' => 'Invalid Payload'], 422);
         }
@@ -122,18 +114,5 @@ class AiWebhookController extends Controller
         }
 
         return response()->json(['status' => 'success']);
-    }
-
-    /**
-     * Validate the request signature using HMAC SHA256.
-     */
-    private function isValid(Request $request): bool
-    {
-        $secret = config('services.mcp_sidecar.token');
-        $timestamp = $request->header('X-Timestamp');
-        $signature = $request->header('X-Signature');
-
-        return is_valid_signature($secret, $timestamp, $signature, $request->getContent());
-
     }
 }

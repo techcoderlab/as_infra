@@ -5,6 +5,8 @@ from core.config import settings
 from core.http import get_client
 from core.logger import mcp_logger
 from core.decorators import tool_timeout
+import json
+from core.security import generate_laravel_hmac_headers
 
 class LeadData(BaseModel):
     # description logic helps Gemini decide when to omit fields
@@ -73,16 +75,21 @@ class LeadWriterTool(BaseTool):
         try:
             mcp_logger.info(f"[LeadWriter] Tenant:{tenant_id} Updating Lead:{clean_id} with {list(clean_data.keys())}\n\n{url}")
             
+            payload_bytes = json.dumps(clean_data).encode('utf-8')
+            hmac_headers = generate_laravel_hmac_headers(payload_bytes, settings.LARAVEL_APP_ID, settings.LARAVEL_APP_SECRET)
+            
+            req_headers = {
+                "x-tenant-id": str(tenant_id),
+                "ngrok-skip-browser-warning": "true",
+                "Content-Type": "application/json"
+            }
+            req_headers.update(hmac_headers)
+            
             # 4. API Request
             response = await client.post(
                 url, 
-                json=clean_data, # Only sends requested fields
-                headers={
-                    "x-service-token": settings.MCP_SIDECAR_CRM_SERVICE_TOKEN,
-                    "x-tenant-id": str(tenant_id),
-                    "ngrok-skip-browser-warning": "true",
-                    "Content-Type": "application/json"
-                },
+                content=payload_bytes, 
+                headers=req_headers,
                 timeout=15.0
             )
             

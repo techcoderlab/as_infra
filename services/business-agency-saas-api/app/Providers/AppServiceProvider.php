@@ -84,7 +84,7 @@ class AppServiceProvider extends ServiceProvider
                 }),
                 Limit::perMinute(120)->by($key)->response(function () use ($responseString) {
                     return response()->json($responseString, 429);
-                })
+                }),
             ];
         });
 
@@ -134,19 +134,19 @@ class AppServiceProvider extends ServiceProvider
         $tenantManager = app(TenantManager::class);
 
         Gate::define('api_keys.view', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('view api_keys');
+            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('view api_keys');
         });
 
         Gate::define('api_keys.write', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('write api_keys');
+            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('write api_keys');
         });
 
         Gate::define('api_keys.update', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('update api_keys');
+            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('update api_keys');
         });
 
         Gate::define('api_keys.delete', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('delete api_keys');
+            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('delete api_keys');
         });
     }
 }
