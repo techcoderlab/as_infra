@@ -9,7 +9,7 @@ from collections.abc import Iterable
 import anthropic
 import json
 
-async def stream_openai(api_key, model, system_prompt, messages, tools):
+async def chat_with_openai(api_key, model, system_prompt, messages, tools):
     client = openai.AsyncOpenAI(api_key=api_key)
     
     # 1. Convert our tool objects to OpenAI's expected JSON schema
@@ -54,7 +54,7 @@ def get_gemini_client(api_key: str) -> Client:
     return _gemini_clients[api_key]
 
 # --- NEW: Complete Gemini Implementation using google-genai SDK ---
-async def stream_gemini(api_key, model_name, system_prompt, history, tools, json_mode: bool = False, thinking_budget: Optional[int] = None):
+async def chat_with_gemini(api_key, model_name, system_prompt, history, tools, json_mode: bool = False, thinking_budget: Optional[int] = None):
     """
     Initializes a Gemini Chat using the new google-genai SDK.
     Returns a Chat object so we can send messages to it.
@@ -119,28 +119,26 @@ async def stream_gemini(api_key, model_name, system_prompt, history, tools, json
         if json_mode and not gemini_tool_declarations:
             config_kwargs["response_mime_type"] = "application/json"
         
-        if thinking_budget is not None and thinking_budget > 0:
-            # P4 Performance: thinking_budget caps internal reasoning to prevent high TTFT
-            # include_thoughts=False significantly reduces TTFT as thoughts aren't streamed
-            config_kwargs["thinking_config"] = types.ThinkingConfig(include_thoughts=False, thinking_budget=thinking_budget)
-            # When thinking is enabled, temperature must be 1.0 (SDK requirement)
-            config_kwargs["temperature"] = 1.0
-        elif thinking_budget == 0:
-            # Explicitly disable thinking for maximum speed
-            config_kwargs["thinking_config"] = None
+        if thinking_budget is not None:
+            mapped_budget = None if thinking_budget == -1 else thinking_budget
+            
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                include_thoughts=False,
+                thinking_budget=mapped_budget
+            )
+            
+            if thinking_budget != 0:
+                config_kwargs["temperature"] = 1.0  
         
         if system_prompt:
             config_kwargs["system_instruction"] = system_prompt
+            
         if gemini_tool_declarations:
             config_kwargs["tools"] = [types.Tool(function_declarations=gemini_tool_declarations)]
-            # Disable automatic function calling - we handle it ourselves
-            config_kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(
-                # disable=True,
-                # maximum_remote_calls=0
-                maximum_remote_calls=10
-            )
-        chat_config = types.GenerateContentConfig(**config_kwargs)
+            # REMOVED automatic_function_calling. 
+            # We want Gemini to pause and return the call to our GeminiStrategy loop.
 
+        chat_config = types.GenerateContentConfig(**config_kwargs)
     # 4. Create async chat session with history
     chat = client.aio.chats.create(
         model=model_name,
@@ -151,7 +149,7 @@ async def stream_gemini(api_key, model_name, system_prompt, history, tools, json
     return chat
 
 
-async def stream_anthropic(api_key, model, system_prompt, messages, tools):
+async def chat_with_anthropic(api_key, model, system_prompt, messages, tools):
     client = anthropic.AsyncAnthropic(api_key=api_key)
     
     # 1. Convert tools if present

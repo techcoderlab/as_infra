@@ -28,7 +28,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(LlmProviderInterface::class, function ($app) {
             return new McpSidecarAdapter(
                 baseUrl: config('services.mcp_sidecar.url'),
-                token: config('services.mcp_sidecar.token')
+                client_app_id: config('services.mcp_sidecar.client_app_id'),
+                client_secret: config('services.mcp_sidecar.client_secret')
             );
         });
     }
@@ -77,11 +78,14 @@ class AppServiceProvider extends ServiceProvider
             ];
 
             // Limit: 60 requests per minute per tenant
-            return [Limit::perSecond(20)->by($key)->response(function () use ($responseString) {
-                return response()->json($responseString, 429);
-            }), Limit::perMinute(120)->by($key)->response(function () use ($responseString) {
-                return response()->json($responseString, 429);
-            })];
+            return [
+                Limit::perSecond(20)->by($key)->response(function () use ($responseString) {
+                    return response()->json($responseString, 429);
+                }),
+                Limit::perMinute(120)->by($key)->response(function () use ($responseString) {
+                    return response()->json($responseString, 429);
+                })
+            ];
         });
 
         // The "Landlord" Gate to prevent cross-tenant data access
@@ -130,19 +134,19 @@ class AppServiceProvider extends ServiceProvider
         $tenantManager = app(TenantManager::class);
 
         Gate::define('api_keys.view', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('view api_keys');
+            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('view api_keys');
         });
 
         Gate::define('api_keys.write', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('write api_keys');
+            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('write api_keys');
         });
 
         Gate::define('api_keys.update', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('update api_keys');
+            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('update api_keys');
         });
 
         Gate::define('api_keys.delete', function ($user) use ($tenantManager) {
-            return $user->isNotSuperAdmin() && ! $user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('delete api_keys');
+            return $user->isNotSuperAdmin() && !$user->isTenantStaff() && $tenantManager->isModuleEnabled('api_keys') && $user->can('delete api_keys');
         });
     }
 }

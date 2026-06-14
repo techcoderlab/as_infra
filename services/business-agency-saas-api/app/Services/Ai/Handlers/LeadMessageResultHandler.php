@@ -23,11 +23,11 @@ class LeadMessageResultHandler implements WorkflowResultHandler
         // 1. Resolve Target
         $target = $this->resolveTarget($payload);
 
-        if (! $target) {
+        if (!$target) {
             return;
         }
 
-        if (! ($target instanceof Lead)) {
+        if (!($target instanceof Lead)) {
             Log::error('[LeadMessageResultHandler]: Target is not a Lead.', ['target_type' => get_class($target)]);
 
             return;
@@ -43,7 +43,8 @@ class LeadMessageResultHandler implements WorkflowResultHandler
 
             // Fallback reply if empty
             $reply = $parsedData['reply'] ?? null;
-            $responseText = ! empty($reply)
+            $done = $parsedData['all_data_collected'] ?? null;
+            $responseText = !empty($reply)
                 ? $reply
                 : 'I’m so sorry, I didn’t quite catch that. Could you rephrase that or say it again?';
 
@@ -57,7 +58,7 @@ class LeadMessageResultHandler implements WorkflowResultHandler
 
                 // Check if Session exists
                 $session = \App\Models\LeadChatSession::where('lead_id', $target->getKey())->first();
-                if (! $session) {
+                if (!$session) {
                     Log::warning('[LeadMessageResultHandler]: Lead Chat Session not found', ['lead_id' => $target->getKey()]);
 
                     return;
@@ -71,6 +72,7 @@ class LeadMessageResultHandler implements WorkflowResultHandler
                 $session->update([
                     'message_count' => DB::raw('message_count + 1'),
                     'last_interaction_at' => $now,
+                    'status' => $done ? 'paused' : 'active',
                 ]);
 
                 // Update activity status to 'sent'

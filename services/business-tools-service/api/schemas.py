@@ -91,9 +91,9 @@ class AgentEnqueueRequest(BaseModel):
     use_stream: bool = Field(default=False, description="Set True for real-time streaming, False for background tasks")
     max_iterations: int = Field(default=7, ge=1, le=15, description="Max tool-calling loops before aborting")
     thinking_budget: Optional[int] = Field(
-        default=0,
+        default=-1,
         description="Max thinking tokens for 2.5 thinking models. 0=disable, None=model default.",
-        ge=0, le=24576
+        ge=-1, le=24576
     )
 
     class Config:

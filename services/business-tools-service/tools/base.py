@@ -65,10 +65,11 @@ class BaseTool(ABC):
 
             # 5. Map and Uppercase Types
             if "type" in s:
+                # Use UPPERCASE to strictly match google.genai.types.Type enums
                 type_map = {
-                    "string": "string", "integer": "integer", 
-                    "number": "number", "boolean": "boolean", 
-                    "array": "array", "object": "object"
+                    "string": "STRING", "integer": "INTEGER", 
+                    "number": "NUMBER", "boolean": "BOOLEAN", 
+                    "array": "ARRAY", "object": "OBJECT"
                 }
                 raw_type = s["type"]
                 # If Pydantic gives us a list of types, take the first non-null one

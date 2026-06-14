@@ -142,7 +142,8 @@ services:
     environment:
       - ENV=production
       - PORT=8017
-      - REDIS_HOST=redis
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
       - APP_URL=${AS_APP_URL}
       - SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
       - ALLOWED_CALLBACK_DOMAINS=${ALLOWED_CALLBACK_DOMAINS}
@@ -194,6 +195,7 @@ services:
       - APP_KEY=${AS_APP_KEY}
       - FRONTEND_URL=${AS_FRONTEND_URL}
       - APP_URL=${AS_APP_URL}
+      - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - DB_CONNECTION=pgsql
       - DB_HOST=postgres
@@ -201,7 +203,6 @@ services:
       - DB_DATABASE=${POSTGRES_AS_DB}
       - DB_USERNAME=${POSTGRES_AS_USER}
       - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
-      - REDIS_HOST=redis
       - QUEUE_CONNECTION=redis
       - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
       - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
@@ -221,6 +222,7 @@ services:
       - APP_ENV=production
       - APP_KEY=${AS_APP_KEY}
       - APP_URL=${AS_APP_URL}
+      - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - DB_CONNECTION=pgsql
       - DB_HOST=postgres
@@ -228,7 +230,6 @@ services:
       - DB_DATABASE=${POSTGRES_AS_DB}
       - DB_USERNAME=${POSTGRES_AS_USER}
       - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
-      - REDIS_HOST=redis
       - QUEUE_CONNECTION=redis
       - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
       - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
@@ -258,6 +259,7 @@ services:
       - APP_ENV=production
       - APP_KEY=${AS_APP_KEY}
       - APP_URL=${AS_APP_URL}
+      - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - DB_CONNECTION=pgsql
       - DB_HOST=postgres
@@ -265,7 +267,6 @@ services:
       - DB_DATABASE=${POSTGRES_AS_DB}
       - DB_USERNAME=${POSTGRES_AS_USER}
       - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
-      - REDIS_HOST=redis
       - QUEUE_CONNECTION=redis
       - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
       - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}

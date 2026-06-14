@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     WA_SEND_LOG_FILE: str = "logs/whatsapp_service.log"
     
     # --- 3. Aliased Config (Different Env Name -> Class Name) ---
+
+
+    REDIS_HOST: str = Field(default="redis", validation_alias="REDIS_HOST") # or "localhost"
+    REDIS_PORT: int = Field(default=6379, validation_alias="REDIS_PORT")
     
     # Maps env var "MCP_SIDECAR_LOG_FILE" -> Class var "AGENT_LOG_FILE"
     AGENT_LOG_FILE: str = Field(
@@ -24,11 +28,13 @@ class Settings(BaseSettings):
         validation_alias="MCP_SIDECAR_LOG_FILE"
     )
     
+    # REMOVE OR DEPRECATE:
     # Maps env var "SERVICE_TOKEN" -> Class var "MCP_SIDECAR_CRM_SERVICE_TOKEN"
     MCP_SIDECAR_CRM_SERVICE_TOKEN: str = Field(
         default="", 
         validation_alias="SERVICE_TOKEN"
     )
+
 
     # Maps env var "APP_URL" -> Class var "AS_API_BASE"
     AS_API_BASE: str = Field(

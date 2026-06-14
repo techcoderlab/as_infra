@@ -89,6 +89,8 @@ ide-helper: ## Generate IDE helpers
 
 migrate: ## Run migrations
 	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate
+migrate-fresh: ## Run migrations
+	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate:fresh
 rollback: ## Run rollback
 	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate:rollback
 

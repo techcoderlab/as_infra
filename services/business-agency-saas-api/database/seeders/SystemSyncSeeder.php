@@ -22,9 +22,10 @@ class SystemSyncSeeder extends Seeder
             $this->command->info('Syncing modules...');
             $modules = config('modules.metadata', []);
             foreach ($modules as $moduleData) {
+                $slug = array_keys($moduleData)[0];
                 Module::updateOrCreate(
-                    ['slug' => $moduleData['slug']],
-                    ['name' => $moduleData['name']]
+                    ['slug' => $slug],
+                    ['name' => $moduleData[$slug]['label'] ?? '']
                 );
             }
             $this->command->info('Modules synced.');

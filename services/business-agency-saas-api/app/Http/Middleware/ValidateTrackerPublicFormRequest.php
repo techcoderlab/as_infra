@@ -27,6 +27,8 @@ class ValidateTrackerPublicFormRequest
 
         // 1. QUICK EXIT: No Form ID
         if (! $formId) {
+            Log::error('Form ID is required', ['request' => $request->all()]);
+
             return response()->json(['message' => 'Unprocessable Entity. Form ID is required.'], 422);
         }
 

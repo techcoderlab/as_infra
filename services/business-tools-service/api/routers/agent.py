@@ -81,7 +81,7 @@ async def agent_chat(request: Request):
 
     async def event_generator():
         try:
-            async for event in service.run_stream(body):
+            async for event in service.run(body):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             mcp_logger.error(f"Agent Chat Stream Error: {str(e)}")

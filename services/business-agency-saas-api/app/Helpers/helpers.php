@@ -7,7 +7,7 @@ use Illuminate\Support\Arr;
  * $data = ['id' => 1, 'user' => ['name' => 'John', 'role' => 'admin']];
  * keys_except($data, 'user.role'); // Returns ['id' => 1, 'user' => ['name' => 'John']]
  */
-if (! function_exists('keys_except')) {
+if (!function_exists('keys_except')) {
     function keys_except($array, $keys): array
     {
         // 1. Force to array (handles nulls or objects safely)
@@ -22,11 +22,11 @@ if (! function_exists('keys_except')) {
         // Optimization: Use direct Arr::forget for simple keys (Fastest)
         // Use dot-regex logic ONLY if a wildcard is present
         foreach ($keys as $key) {
-            if (! str_contains($key, '*')) {
+            if (!str_contains($key, '*')) {
                 Arr::forget($result, $key);
             } else {
                 $flattened = Arr::dot($result);
-                $regex = '/^'.str_replace('\*', '[^.]+', preg_quote($key, '/')).'(\.|$)/';
+                $regex = '/^' . str_replace('\*', '[^.]+', preg_quote($key, '/')) . '(\.|$)/';
                 // preg_grep is much faster than looping and preg_match-ing individually
                 $matches = preg_grep($regex, array_keys($flattened));
                 foreach ($matches as $match) {
@@ -46,7 +46,7 @@ if (! function_exists('keys_except')) {
  * $data = ['users' => [['id' => 1, 'name' => 'A'], ['id' => 2, 'name' => 'B']]];
  * keys_only($data, 'users.*.name'); // Returns only the names in the structure
  */
-if (! function_exists('keys_only')) {
+if (!function_exists('keys_only')) {
     function keys_only($array, $keys): array
     {
         if (empty($array)) {
@@ -73,8 +73,8 @@ if (! function_exists('keys_only')) {
         // }
 
         // Pro-tip: Combine all keys into one regex pattern
-        $patterns = array_map(fn ($k) => str_replace('\*', '[^.]+', preg_quote($k, '/')), $keys);
-        $regex = '/^('.implode('|', $patterns).')(\.|$)/';
+        $patterns = array_map(fn($k) => str_replace('\*', '[^.]+', preg_quote($k, '/')), $keys);
+        $regex = '/^(' . implode('|', $patterns) . ')(\.|$)/';
         $matchedKeys = preg_grep($regex, array_keys($flattened));
 
         foreach ($matchedKeys as $match) {
@@ -89,7 +89,7 @@ if (! function_exists('keys_only')) {
     }
 }
 
-if (! function_exists('sanitize_payload')) {
+if (!function_exists('sanitize_payload')) {
     /**
      * Recursively truncate strings in a nested array.
      */
@@ -107,7 +107,7 @@ if (! function_exists('sanitize_payload')) {
         // If it's a string, truncate it safely
         if (is_string($data)) {
             return mb_strlen($data) > $limit
-                ? mb_substr($data, 0, $limit).'...'
+                ? mb_substr($data, 0, $limit) . '...'
                 : $data;
         }
 
@@ -205,12 +205,12 @@ if (! function_exists('sanitize_payload')) {
     // }
 }
 
-if (! function_exists('get_host')) {
+if (!function_exists('get_host')) {
     function get_host($url)
     {
         // Hack: Add a dummy protocol if missing so parse_url identifies the host correctly
         if (strpos($url, 'http') !== 0 && strpos($url, '//') !== 0) {
-            $url = 'http://'.$url;
+            $url = 'http://' . $url;
         }
 
         $host = parse_url($url, PHP_URL_HOST);
@@ -220,7 +220,7 @@ if (! function_exists('get_host')) {
     }
 }
 
-if (! function_exists('is_valid_origin')) {
+if (!function_exists('is_valid_origin')) {
     function is_valid_origin(string $allowedUrl, string $requestOrigin): bool
     {
         if (empty($allowedUrl)) {
@@ -237,17 +237,17 @@ if (! function_exists('is_valid_origin')) {
     }
 }
 
-if (! function_exists('is_bot')) {
+if (!function_exists('is_bot')) {
     function is_bot($honeypot_input, $ms_since_load): bool
     {
-        $is_honeypot = ! empty($honeypot_input);
+        $is_honeypot = !empty($honeypot_input);
         $is_timing = $ms_since_load < 2500;
 
         return $is_honeypot || $is_timing;
     }
 }
 
-if (! function_exists('is_valid_signature')) {
+if (!function_exists('is_valid_signature')) {
     /**
      * Validate the request signature using HMAC SHA256.
      *
@@ -259,7 +259,7 @@ if (! function_exists('is_valid_signature')) {
             return false;
         }
 
-        if (! $timestamp || ! $signature) {
+        if (!$timestamp || !$signature) {
             return false;
         }
 
@@ -268,21 +268,87 @@ if (! function_exists('is_valid_signature')) {
             return false;
         }
 
-        $expected = hash_hmac('sha256', $timestamp.$json_body, $secret);
+        $expected = hash_hmac('sha256', $timestamp . $json_body, $secret);
 
         return hash_equals($expected, (string) $signature);
     }
 
-    function create_valid_signature(string $secret, string $timestamp, string $json_body): string
+    // function create_valid_signature(string $secret, string $timestamp, string $json_body): string
+    // {
+    //     if (empty($secret)) {
+    //         return '';
+    //     }
+
+    //     if (empty($timestamp)) {
+    //         $timestamp = time();
+    //     }
+
+    //     return hash_hmac('sha256', $timestamp.$json_body, $secret);
+    // }
+
+    // /**
+    //  * Creates an asymmetric cryptographic signature using an Ed25519 Private Key.
+    //  *
+    //  * @param string $privateKeyHex The Ed25519 private key/seed (from Laravel .env)
+    //  * @param string $timestamp     The current timestamp string
+    //  * @param string $jsonBody      The raw request payload body
+    //  * @return string               The hex-encoded signature
+    //  * @throws \Exception
+    //  */
+    // function create_valid_signature(string $privateKeyHex, string $timestamp, string $jsonBody): string
+    // {
+    //     if (empty($privateKeyHex)) {
+    //         return '';
+    //     }
+
+    //     if (empty($timestamp)) {
+    //         $timestamp = (string) time();
+    //     }
+
+    //     // Convert the hex private key back to binary
+    //     $privateKeyBinary = hex2bin($privateKeyHex);
+
+    //     // FAST FIX: If Python gave us a 32-byte seed, expand it to the 64-byte secret key PHP needs
+    //     if (strlen($privateKeyBinary) === SODIUM_CRYPTO_SIGN_SEEDBYTES) { // 32 bytes
+    //         $keypair = sodium_crypto_sign_seed_keypair($privateKeyBinary);
+    //         $privateKeyBinary = sodium_crypto_sign_secretkey($keypair);  // Expands to 64 bytes
+    //     }
+    //     // Sanity check
+    //     elseif (strlen($privateKeyBinary) !== SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
+    //         throw new \Exception("Invalid private key length. Must be exactly 32 or 64 bytes.");
+    //     }
+
+    //     // Construct the payload message exactly as Python expects it
+    //     $message = $timestamp . $jsonBody;
+
+    //     // Generate a detached cryptographic signature using the 64-byte key
+    //     $signatureBinary = sodium_crypto_sign_detached($message, $privateKeyBinary);
+
+    //     return bin2hex($signatureBinary);
+    // }
+
+    /**
+     * Creates an HMAC SHA-256 cryptographic signature for API requests.
+     *
+     * @param string $secret    The unique developer/app secret (e.g., sk_live_...)
+     * @param string $timestamp The current UNIX timestamp string
+     * @param string $jsonBody  The raw request payload body
+     * @return string           The hex-encoded signature
+     */
+    function create_valid_signature(string $secret, string $timestamp, string $jsonBody): string
     {
         if (empty($secret)) {
             return '';
         }
 
         if (empty($timestamp)) {
-            $timestamp = time();
+            $timestamp = (string) time();
         }
 
-        return hash_hmac('sha256', $timestamp.$json_body, $secret);
+        // Construct the payload message exactly as FastAPI expects it: Timestamp + Body
+        $message = $timestamp . $jsonBody;
+
+        // Generate the HMAC SHA-256 signature using the secret
+        return hash_hmac('sha256', $message, $secret);
     }
 }

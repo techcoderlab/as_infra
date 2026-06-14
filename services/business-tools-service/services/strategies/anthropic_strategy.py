@@ -2,14 +2,14 @@ import json
 import asyncio
 from typing import AsyncGenerator, Any, Optional
 from core.logger import mcp_logger
-from services.llm import stream_anthropic
+from services.llm import chat_with_anthropic
 from services.strategies.base import LLMStrategy
 
 class AnthropicStrategy(LLMStrategy):
     def __init__(self, max_iterations=30):
         self.max_iterations = max_iterations
 
-    async def run_stream(self, api_key: str, model: str, system_prompt: str, effective_history: list, full_user_message: str, tools: list, context: dict, output_format: str = 'text', thinking_budget: Optional[int] = None, use_stream: bool = True, max_iterations: int = 7) -> AsyncGenerator[dict[str, Any], None]:
+    async def execute(self, api_key: str, model: str, system_prompt: str, effective_history: list, full_user_message: str, tools: list, context: dict, output_format: str = 'text', thinking_budget: Optional[int] = None, use_stream: bool = True, max_iterations: int = 7) -> AsyncGenerator[dict[str, Any], None]:
         # Prepare base messages
         messages = []
         for msg in effective_history:
@@ -25,7 +25,7 @@ class AnthropicStrategy(LLMStrategy):
         while iteration < max_iterations:
             iteration += 1
             try:
-                stream = await stream_anthropic(api_key, model, system_prompt, messages, tools)
+                stream = await chat_with_anthropic(api_key, model, system_prompt, messages, tools)
                 
                 # Tracking state for the current response
                 final_content = []      # To store text blocks

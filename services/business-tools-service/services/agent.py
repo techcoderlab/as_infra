@@ -5,7 +5,6 @@
 # ─────────────────────────────────────────────────────
 
 import json
-import asyncio
 import re
 import time
 from dataclasses import dataclass, field
@@ -110,7 +109,7 @@ class AgentService:
         text = re.sub(r'</?(user_input|context_data|system_protocol)>', '', text, flags=re.IGNORECASE)
         return text
 
-    async def run_stream(self, request_data):
+    async def run(self, request_data):
         start_time = time.monotonic()
         
         provider = request_data.get('provider')
@@ -131,7 +130,7 @@ class AgentService:
             yield {"type": "error", "data": "Missing Brain API Key"}
             return
 
-        mcp_logger.info(f"🧠 AgentService started with {provider} model: {model} | history: {len(history)} | tools: {requested_tools} | tool_configs: {tool_configs} | context: {raw_context}")
+        mcp_logger.info(f"🧠 AgentService started with {provider} model: {model} | history: {len(history)} | tools: {requested_tools} | tool_configs: {tool_configs} | context: {raw_context} | Streaming Mode: {use_stream} | Thinking budget: {thinking_budget} | Max tools calling loop: {max_iterations}")
 
         # MERGE Configs into Context
         if tool_configs:
@@ -236,7 +235,7 @@ class AgentService:
             strategy = LLMStrategyFactory.get_strategy(provider)
             
             ttft_tracked = False
-            async for event in strategy.run_stream(
+            async for event in strategy.execute(
                 api_key=api_key,
                 model=model,
                 system_prompt=modified_system_prompt,
@@ -255,10 +254,10 @@ class AgentService:
                     ttft_tracked = True
                 yield event
         except Exception as e:
-            mcp_logger.error(f"Agent Stream Critical Error: {e}", exc_info=True)
+            mcp_logger.error(f"AgentService Critical Error: {e}", exc_info=True)
             yield {"type": "error", "data": str(e)}
         
-        mcp_logger.info("AgentService stream completed")
+        mcp_logger.info("AgentService Completed")
 
     async def run_and_collect(self, request_data: dict) -> AgentResult:
         """
@@ -279,7 +278,7 @@ class AgentService:
         thought_stream = []
 
         try:
-            async for event in self.run_stream(request_data):
+            async for event in self.run(request_data):
                 event_type = event.get("type")
                 
                 if event_type == "token":

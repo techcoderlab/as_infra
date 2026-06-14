@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize the shared connection pool
     logger.info("Starting API & initializing HTTP Singleton...")
     get_client() # This creates the connection pool once
+    # generate_keypair()
     
     yield
     # Shutdown: Cleanly close the pool
@@ -34,6 +35,17 @@ app = FastAPI(
     root_path=settings.ROOT_PATH
 )
 
+# def generate_keypair():
+#     # pyrefly: ignore [missing-import]
+#     from cryptography.hazmat.primitives.asymmetric import ed25519
+
+#     # Generate a brand new secure keypair
+#     private_key = ed25519.Ed25519PrivateKey.generate()
+#     public_key = private_key.public_key()
+
+#     # Export them as hex strings to drop into your environment files
+#     print("LARAVEL_PRIVATE_KEY_HEX =", private_key.private_bytes_raw().hex())
+#     print("LARAVEL_PUBLIC_KEY_HEX  =", public_key.public_bytes_raw().hex())
 
 # Limit global request size to 1MB
 @app.middleware("http")

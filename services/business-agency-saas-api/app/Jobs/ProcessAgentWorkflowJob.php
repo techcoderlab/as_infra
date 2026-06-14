@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\AiJob;
+use App\Models\Lead;
 use App\Models\Tenant;
 use App\Services\Ai\Contracts\LlmProviderInterface;
 use App\Services\Ai\DTO\WorkflowPayload;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
-use Str;
+use Illuminate\Support\Str;
 
 class ProcessAgentWorkflowJob implements ShouldQueue
 {
@@ -45,7 +46,8 @@ class ProcessAgentWorkflowJob implements ShouldQueue
     public function __construct(
         protected int $tenantId,
         protected WorkflowPayload $payload
-    ) {}
+    ) {
+    }
 
     public function handle(LlmProviderInterface $aiProvider)
     {
@@ -55,8 +57,6 @@ class ProcessAgentWorkflowJob implements ShouldQueue
          * FIX 2: Consistency in Target Type
          * Ensure we Search AND Save using the same string.
          */
-        $targetType = "App\\Models\\{$this->payload->targetType}";
-
         $targetType = "App\\Models\\{$this->payload->targetType}";
 
         // We use firstOrCreate so we don't overwrite job_uuid on retries.
@@ -133,7 +133,36 @@ class ProcessAgentWorkflowJob implements ShouldQueue
         // Inject sensitive data back into the payload dynamically
         $context = $this->payload->context;
         $context['agent_config']['api_key'] = $agent->integration->value['api_key'];
-        
+
+
+        $history = [];
+        if (strtolower($this->payload->targetType) == 'lead' && !empty($agent->context_window_size)) {
+
+            // Reconstruct History from LeadActivity
+            // We fetch the last 10 relevant interactions
+
+            $activities = Lead::where('tenant_id', $this->tenantId)->find($this->payload->targetId)->activities()
+                ->whereIn('type', ['message_received', 'ai_reply'])
+                ->latest()
+                ->take((int) $agent->context_window_size)
+                ->get()
+                ->reverse(); // Chronological order for LLM
+
+            foreach ($activities as $activity) {
+                // If the activity is a user message
+                if ($activity->type === 'message_received') {
+                    // Extract content cleanly (remove sender name prefix if present)
+                    // Format: "Name: message" -> we just want "message" if possible, or keep as is.
+                    // For now, simpler is better:
+                    $history[] = ['role' => 'user', 'content' => $activity->content];
+                }
+                // If the activity is an AI response
+                elseif ($activity->type === 'ai_reply') {
+                    $history[] = ['role' => 'assistant', 'content' => $activity->content];
+                }
+            }
+        }
+
         $this->payload = new WorkflowPayload(
             targetType: class_basename($targetType), // Keep basename
             targetId: $this->payload->targetId,
@@ -142,10 +171,14 @@ class ProcessAgentWorkflowJob implements ShouldQueue
             requiredTools: $this->payload->requiredTools,
             handlerClass: $this->payload->handlerClass,
             toolConfigs: $agent->tool_configs ?? [], // Inject tool secrets
-            tempValueContainer: $this->payload->getTempValue('debounce_session_key') 
-                ? ['debounce_session_key' => $this->payload->getTempValue('debounce_session_key')] 
-                : null
+            tempValueContainer: $this->payload->getTempValue('debounce_session_key')
+            ? ['debounce_session_key' => $this->payload->getTempValue('debounce_session_key')]
+            : null
         );
+
+        if (!empty($history)) {
+            $this->payload->setTempValue('history', $history);
+        }
 
         /**
          * ------------------------------------------------------
@@ -156,8 +189,8 @@ class ProcessAgentWorkflowJob implements ShouldQueue
          */
         $globalLimiterKey = 'ai-global-concurrency';
         $maxGlobal = config('services.mcp_sidecar.global_concurrency');
-        if (! RateLimiter::attempt($globalLimiterKey, $maxGlobal, fn () => true, 1)) {
-            Log::warning('[ProcessAgentWorkflowJob]: Global concurrency limit hit, backing off', [
+        if (!RateLimiter::attempt($globalLimiterKey, $maxGlobal, fn() => true, 1)) {
+            Log::error('[ProcessAgentWorkflowJob]: Global concurrency limit hit, backing off', [
                 'tenant' => $this->tenantId,
             ]);
 
@@ -172,13 +205,15 @@ class ProcessAgentWorkflowJob implements ShouldQueue
          */
         $tenantLimiterKey = "ai-tenant:{$this->tenantId}";
         $tenantConcurrent = config('services.mcp_sidecar.tenant_concurrency');
-        if (! RateLimiter::attempt(
-            $tenantLimiterKey,
-            $perSecond = $tenantConcurrent,
-            fn () => true,
-            $decay = 180 // 3 minutes
-        )) {
-            Log::warning('[ProcessAgentWorkflowJob]: Tenant concurrency limit hit, backing off', [
+        if (
+            !RateLimiter::attempt(
+                $tenantLimiterKey,
+                $perSecond = $tenantConcurrent,
+                fn() => true,
+                $decay = 180 // 3 minutes
+            )
+        ) {
+            Log::error('[ProcessAgentWorkflowJob]: Tenant concurrency limit hit, backing off', [
                 'tenant' => $this->tenantId,
             ]);
             // Graceful backoff
@@ -227,16 +262,16 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                 // Update the DB record to 'failed' so you know it didn't reach the sidecar
                 $aiJobRecord->update([
                     'status' => 'failed',
-                    'error_message' => 'AI Job failed: '.Str::limit($exception->getMessage(), 500),
+                    'error_message' => 'AI Job failed: ' . Str::limit($exception->getMessage(), 500),
                 ]);
             });
 
-            Log::info("[ProcessAgentWorkflowJob]: Handoff initiated for {$aiJobRecord->job_uuid}");
+            Log::error("[ProcessAgentWorkflowJob]: Handoff initiated for {$aiJobRecord->job_uuid}");
         } catch (\Exception $e) {
             // Only hits if there's a structural failure (e.g., payload error)
             $aiJobRecord->update([
                 'status' => 'failed',
-                'error_message' => 'AI Job failed: '.Str::limit($e->getMessage(), 500),
+                'error_message' => 'AI Job failed: ' . Str::limit($e->getMessage(), 500),
             ]);
             throw $e;
         }

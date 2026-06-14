@@ -22,7 +22,7 @@ class AiGateway
     {
         $tenantId = $target->tenant_id;
 
-        if (! $tenantId) {
+        if (!$tenantId) {
             Log::error("[AI GATEWAY]: AI Agent '{$slug}' | Missing tenant_id for target MODEL.");
 
             return;
@@ -34,7 +34,7 @@ class AiGateway
         $agent = Cache::remember(
             "ai_agent:{$tenantId}:{$slug}",
             600,
-            fn () => AiAgent::query()
+            fn() => AiAgent::query()
                 ->where('tenant_id', $tenantId)
                 ->where('slug', $slug)
                 ->where('is_active', true)
@@ -42,13 +42,13 @@ class AiGateway
                 ->first()
         );
 
-        if (! $agent) {
+        if (!$agent) {
             Log::error("[AI GATEWAY]: AI Agent '{$slug}' not found or not active for Tenant {$tenantId}.");
 
             return;
         }
 
-        if (! $agent->integration?->value['api_key']) {
+        if (!$agent->integration?->value['api_key']) {
             Log::error("[AI GATEWAY]: AI Agent '{$slug}' | Missing API key for brain '{$agent->brain}'.");
 
             return;
@@ -61,7 +61,7 @@ class AiGateway
         //     return;
         // }
 
-        Log::info('[AI GATEWAY]: Dispatching ProcessAgentWorkflowJob for Agent: '.$agent->slug, [
+        Log::info('[AI GATEWAY]: Dispatching ProcessAgentWorkflowJob for Agent: ' . $agent->slug, [
             'tenant_id' => $tenantId,
             'target' => class_basename($target),
         ]);
@@ -74,32 +74,6 @@ class AiGateway
         // INJECTION DEFENSE LAYER 1:
         // We pass the RAW data to the context (safe), but the Prompt Hydration happens in the Payload via Agent.
 
-        $history = [];
-        if ($target instanceof \App\Models\Lead && ! empty($agent->context_window_size)) {
-
-            // Reconstruct History from LeadActivity
-            // We fetch the last 10 relevant interactions
-            $activities = $target->activities()
-                ->whereIn('type', ['message_received', 'ai_reply'])
-                ->latest()
-                ->take((int) $agent->context_window_size)
-                ->get()
-                ->reverse(); // Chronological order for LLM
-
-            foreach ($activities as $activity) {
-                // If the activity is a user message
-                if ($activity->type === 'message_received') {
-                    // Extract content cleanly (remove sender name prefix if present)
-                    // Format: "Name: message" -> we just want "message" if possible, or keep as is.
-                    // For now, simpler is better:
-                    $history[] = ['role' => 'user', 'content' => $activity->content];
-                }
-                // If the activity is an AI response
-                elseif ($activity->type === 'ai_reply') {
-                    $history[] = ['role' => 'assistant', 'content' => $activity->content];
-                }
-            }
-        }
 
         // Add history to context so the Job can pass it to the Python sidecar
         $contextPayload = WorkflowPayload::fromAgent(
@@ -107,8 +81,6 @@ class AiGateway
             target: $target,
             session: $session
         );
-
-        $contextPayload->setTempValue('history', $history);
 
         // Add session key for debouncing finalization
         if ($session) {
@@ -142,7 +114,7 @@ class AiGateway
         }
 
         $timestamp = time();
-        $url = config('services.mcp_sidecar.url').'/v1/agent/chat';
+        $url = config('services.mcp_sidecar.url') . '/v1/agent/chat';
 
         // 2. Build Payload -> OPTIMIZATION: Send 'history' as an array. The Python sidecar will map it to the native Gemini/OpenAI message format.
         $data = [
@@ -157,25 +129,31 @@ class AiGateway
             'context' => $context,
             'tools' => $agent->tools ?? [], // e.g. ['read_leads', 'update_lead']
             'tool_configs' => $agent->tool_configs ?? [], // e.g. ['read_leads' => ['api_key' => '...']]
+            'use_stream' => true,
+            'thinking_budget' => -1,
         ];
 
         $jsonBody = json_encode($data);
 
         // SIGNING STRING: Timestamp + Raw JSON Body
         // This proves the timestamp is real AND the body wasn't changed.
-        $signature = hash_hmac('sha256', $timestamp.$jsonBody, config('services.mcp_sidecar.token'));
+        // $signature = hash_hmac('sha256', $timestamp . $jsonBody, config('services.mcp_sidecar.token'));
+
+        $signature = create_valid_signature(config('services.mcp_sidecar.client_secret'), $timestamp, $jsonBody);
+
 
         // 3. Send Stream Request
         return Http::withOptions([
             'stream' => true,
         ])->withHeaders([
-            'X-Signature' => $signature,
-            'X-Timestamp' => $timestamp,
-            'X-Tenant-ID' => $context['tenant_id'] ?? null,
-            'X-Service-ID' => config('services.mcp_sidecar.calling_api_name'),
-            'Content-Type' => 'application/json',
-            'Accept' => 'text/event-stream', // Important for SSE
-        ])
+                    'X-App-Id' => config('services.mcp_sidecar.client_app_id'),
+                    'X-Signature' => $signature,
+                    'X-Timestamp' => $timestamp,
+                    'X-Tenant-ID' => $context['tenant_id'] ?? null,
+                    'X-Service-ID' => config('services.mcp_sidecar.calling_api_name'),
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'text/event-stream', // Important for SSE
+                ])
             ->timeout(120)
             ->withBody($jsonBody, 'application/json')
             ->post($url);
