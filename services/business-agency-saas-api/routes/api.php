@@ -69,8 +69,20 @@ Route::middleware(['auth:sanctum', 'throttle:tenant_api', 'check.status', 'log.a
     Route::put('/plans/{plan}', [PlanController::class, 'updatePlan']);
     Route::delete('/plans/{plan}', [PlanController::class, 'destroyPlan']);
     Route::post('/modules', [PlanController::class, 'storeModule']);
+    Route::put('/modules/{module}', [PlanController::class, 'updateModule']);
     // Assign Plan
     Route::post('/tenants/{tenant}/assign-plan', [PlanController::class, 'assignPlan']);
+
+    // Super Admin User Management
+    Route::get('/admin/users', [\App\Http\Controllers\Admin\UserManagementController::class, 'index']);
+    Route::post('/admin/users', [\App\Http\Controllers\Admin\UserManagementController::class, 'store']);
+    Route::get('/admin/users/{user}', [\App\Http\Controllers\Admin\UserManagementController::class, 'show']);
+    Route::put('/admin/users/{user}', [\App\Http\Controllers\Admin\UserManagementController::class, 'update']);
+    Route::delete('/admin/users/{user}', [\App\Http\Controllers\Admin\UserManagementController::class, 'destroy']);
+    Route::post('/admin/users/{user}/assign-tenant', [\App\Http\Controllers\Admin\UserManagementController::class, 'assignTenant']);
+    Route::delete('/admin/users/{user}/tenants/{tenant}', [\App\Http\Controllers\Admin\UserManagementController::class, 'removeTenant']);
+    Route::put('/admin/users/{user}/tenants/{tenant}/role', [\App\Http\Controllers\Admin\UserManagementController::class, 'updateTenantRole']);
+
 
     // AI Chat Modules
     Route::middleware(['check.module:ai_chats'])->group(function () {

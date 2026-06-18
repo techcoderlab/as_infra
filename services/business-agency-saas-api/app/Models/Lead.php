@@ -38,6 +38,16 @@ class Lead extends Model
      */
     public function toAiContext(): array
     {
+        $payload = (array) ($this->payload ?? []);
+        
+        // PII Masking: Redact sensitive fields
+        $piiKeys = ['email', 'phone', 'ssn', 'password', 'credit_card', 'cc_number', 'dob', 'address', 'first_name', 'last_name', 'name'];
+        foreach ($piiKeys as $key) {
+            if (isset($payload[$key])) {
+                $payload[$key] = '[REDACTED]';
+            }
+        }
+
         return [
             'id' => $this->getKey(),
             'status' => $this->status,
@@ -46,7 +56,7 @@ class Lead extends Model
             'score' => $this->score,
             'won' => $this->won,
             // Only expose specific safe fields from payload/metadata
-            'payload' => ! empty($this->payload) ? $this->payload : null,
+            'payload' => !empty($payload) ? $payload : null,
             // 'recent_activity' => $this->activities()->limit(5)->get()->map(fn($a) => $a->content)->toArray(),
             'created_at' => $this->created_at->toDateTimeString(),
         ];

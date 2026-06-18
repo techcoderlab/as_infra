@@ -102,9 +102,13 @@ const router = createRouter({
 
         {
           path: 'tenants',
-          name: 'superadmin-tenants',
-          component: SuperAdminTenants,
-          meta: { role: 'super_admin' },
+          name: 'super-admin-tenants',
+          component: () => import('../views/admin/SuperAdminTenants.vue')
+        },
+        {
+          path: 'users',
+          name: 'super-admin-users',
+          component: () => import('../views/admin/UserManagement.vue')
         },
         {
           path: 'plans-and-modules',

@@ -63,96 +63,27 @@ class LeadController extends Controller
         $this->authorize('viewAny', Lead::class);
         $tenantId = $request->user()->current_tenant_id;
 
-        // CACHING STRATEGY:
-        // We cache dashboard stats for 5 minutes.
-        // This protects your Shared Hosting CPU from calculating these numbers
-        // every time the client refreshes the page.
         $cacheKey = "dashboard_stats_{$tenantId}";
-        $data = Cache::remember($cacheKey, 120, function () use ($tenantId) {
+        $data = Cache::get($cacheKey);
+        
+        // Background cache refresh logic
+        $lastUpdated = Cache::get("{$cacheKey}_last_updated", 0);
+        if (time() - $lastUpdated > 120) {
+            \App\Jobs\CalculateTenantStatsJob::dispatch($tenantId);
+            // Bump the timestamp so we don't dispatch it multiple times while it's processing
+            Cache::put("{$cacheKey}_last_updated", time(), 300);
+        }
 
-            $now = now();
-            $startOfMonth = $now->copy()->startOfMonth();
-            $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
-            $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
-
-            /* NEW AGGREGATE for postgres */
-            $aggregates = Lead::where('tenant_id', $tenantId)
-                ->selectRaw('count(*) as total')
-                ->selectRaw("count(*) FILTER (WHERE status = 'new') as new_leads")
-                ->selectRaw("count(*) FILTER (WHERE status = 'closed' and won = true) as closed_leads")
-                ->selectRaw("count(*) FILTER (WHERE temperature = 'hot') as hot_leads")
-                // Actionable: Leads older than 24h
-                ->selectRaw("count(*) FILTER (WHERE status = 'new' AND created_at < ?) as stale_leads", [$now->subDay()])
-                // Growth: Leads this month
-                ->selectRaw('count(*) FILTER (WHERE created_at >= ?) as this_month_leads', [$startOfMonth])
-                // Growth: Comparison
-                ->selectRaw('count(*) FILTER (WHERE created_at >= ? AND created_at <= ?) as last_month_leads', [$startOfLastMonth, $endOfLastMonth])
-                ->first();
-
-            // 2. TREND DATA (For a "Last 7 Days" Sparkline Chart)
-            // Clients love seeing a visual line graph.
-
-            /* NEW $dailyTrend for postgres */
-            $dailyTrend = Lead::where('tenant_id', $tenantId)
-                ->where('created_at', '>=', $now->copy()->subDays(6)->startOfDay())
-                // Use Postgres cast syntax
-                ->selectRaw('created_at::date as date, count(*) as count')
-                // Group by the expression, not the alias
-                ->groupByRaw('created_at::date')
-                ->orderBy('date')
-                ->get()
-                ->mapWithKeys(fn ($item) => [$item->date => $item->count]);
-
-            // Fill in missing days with 0 (for a smooth chart)
-            $chartData = [];
-            for ($i = 6; $i >= 0; $i--) {
-                $date = $now->copy()->subDays($i)->format('Y-m-d');
-                $chartData[$date] = $dailyTrend[$date] ?? 0;
-            }
-
-            // 3. TOP SOURCES (Where is money coming from?)
-            $topSources = Lead::where('tenant_id', $tenantId)
-                ->select('source', DB::raw('count(*) as count'))
-                ->groupBy('source')
-                ->orderByDesc('count');
-            // ->limit(4)
-            // ->get();
-
-            // 4. CALCULATIONS
-            $conversionRate = $aggregates->total > 0
-                ? round(($aggregates->closed_leads / $aggregates->total) * 100, 1)
-                : 0;
-
-            // Calculate Growth Percentage
-            $growth = 0;
-            if ($aggregates->last_month_leads > 0) {
-                $growth = (($aggregates->this_month_leads - $aggregates->last_month_leads) / $aggregates->last_month_leads) * 100;
-            } elseif ($aggregates->this_month_leads > 0) {
-                $growth = 100; // 0 to something is 100% growth
-            }
-
-            return [
-                'overview' => [
-                    'total_leads' => $aggregates->total,
-                    'new_leads' => $aggregates->new_leads,
-                    'hot_leads' => $aggregates->hot_leads,
-                    'conversion_rate' => $conversionRate,
-                    'stale_leads' => $aggregates->stale_leads, // "Needs Attention"
-                ],
-                'growth' => [
-                    'this_month' => $aggregates->this_month_leads,
-                    'last_month' => $aggregates->last_month_leads,
-                    'percentage' => round($growth, 1),
-                ],
-                'chart_data' => $chartData, // Array for Chart.js or ApexCharts
-                'top_sources' => $topSources->limit(4)->get(),
-                'leads_search_filters' => [
-                    // 'statuses' => Lead::where('tenant_id', $tenantId)->select('status')->distinct()->pluck('status'),
-                    'temperatures' => ['cold', 'warm', 'hot'],
-                    'sources' => $topSources->pluck('source'),
-                ],
+        if (!$data) {
+            // Default empty state while generating
+            $data = [
+                'overview' => ['total_leads' => 0, 'new_leads' => 0, 'hot_leads' => 0, 'conversion_rate' => 0, 'stale_leads' => 0],
+                'growth' => ['this_month' => 0, 'last_month' => 0, 'percentage' => 0],
+                'chart_data' => [],
+                'top_sources' => [],
+                'leads_search_filters' => ['temperatures' => [], 'sources' => []],
             ];
-        });
+        }
 
         return response()->json([
             'stats' => $data,
@@ -227,8 +158,7 @@ class LeadController extends Controller
         // 2. Apply Filter if dates exist
         if ($start && $end) {
             $query->whereBetween('created_at', [
-                Carbon::parse($start)->endOfDay(),
-                // Carbon::parse($end)->endOfDay()
+                Carbon::parse($start)->startOfDay(),
                 Carbon::parse($end)->endOfDay(), // Use Start of Day to match SQL '2026-01-10' exact behavior
             ]);
         } elseif ($start) {

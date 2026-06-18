@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\TenantManager;
+use App\Models\Module;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -14,8 +15,6 @@ class BootstrapController extends Controller
         $user = Auth::user();
         $tenantManager = app(TenantManager::class);
 
-        $user->load('roles', 'permissions');
-        // $permissions = $user->getAllPermissions()->pluck('name');
 
         $moduleSlugs = $tenantManager->getEnabledModules();
 
@@ -43,9 +42,17 @@ class BootstrapController extends Controller
      */
     private function getModuleMetadata($slug)
     {
+        $module = Module::where('slug', $slug)->first();
 
-        $metadata = config('modules.metadata', []);
+        if ($module) {
+            return [
+                'slug' => $module->slug,
+                'label' => $module->name,
+                'route' => $module->route,
+                'icon' => $module->icon,
+            ];
+        }
 
-        return isset($metadata[$slug]) ? array_merge(['slug' => $slug], $metadata[$slug]) : null;
+        return null;
     }
 }

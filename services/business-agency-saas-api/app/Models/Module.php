@@ -9,7 +9,11 @@ class Module extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'slug'];
+    protected $fillable = ['name', 'slug', 'route', 'icon'];
+
+    protected $casts = [
+        'icon' => 'array',
+    ];
 
     public function plans()
     {

@@ -28,6 +28,7 @@ class WebhookController extends Controller
         $validated = $request->validate([
             'name' => 'nullable|string|max:255',
             'url' => 'required|url',
+            'method' => 'required|string|in:GET,POST,PUT,PATCH,DELETE',
             'secret' => 'nullable|string|max:255',
             // Validate form_id exists and belongs to the current tenant
             'form_id' => [
@@ -50,6 +51,39 @@ class WebhookController extends Controller
         $webhook->save();
 
         return response()->json($webhook, 201);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $webhook = Webhook::where('tenant_id', $request->user()->current_tenant_id)
+            ->where('id', $id)
+            ->firstOrFail();
+
+        $this->authorize('update', $webhook);
+
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'url' => 'required|url',
+            'method' => 'required|string|in:GET,POST,PUT,PATCH,DELETE',
+            'secret' => 'nullable|string|max:255',
+            'form_id' => [
+                'nullable',
+                'string',
+                Rule::exists('forms', 'id')->where(function ($query) use ($request) {
+                    return $query->where('tenant_id', $request->user()->current_tenant_id);
+                }),
+            ],
+            'events' => 'required|array',
+            'events.*' => 'string',
+            'is_active' => 'boolean',
+        ]);
+
+        // Explicitly map properties
+        $webhook->fill($validated);
+        $webhook->form_id = $validated['form_id'] ?? $webhook->form_id;
+        $webhook->save();
+
+        return response()->json($webhook);
     }
 
     public function destroy(Request $request, $id)

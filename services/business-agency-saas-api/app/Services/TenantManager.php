@@ -34,7 +34,7 @@ class TenantManager
         // Use once() or a static cache to prevent querying the tenant table multiple times per request
         $this->tenant = static::$cache[$tenantId] ??= Tenant::find($tenantId);
 
-        if (! $this->tenant) {
+        if (!$this->tenant) {
             throw new \Illuminate\Database\Eloquent\ModelNotFoundException("Tenant {$tenantId} not found.");
         }
     }
@@ -64,7 +64,7 @@ class TenantManager
         // FIX: Call getActiveTenant() to ensure it is loaded
         $tenant = $this->getActiveTenant();
 
-        if (! $tenant) {
+        if (!$tenant) {
             return false;
         }
 
@@ -123,7 +123,7 @@ class TenantManager
     public function getEnabledModules(): array
     {
         $tenant = $this->getActiveTenant();
-        if (! $tenant) {
+        if (!$tenant) {
             return [];
         }
 
@@ -149,7 +149,7 @@ class TenantManager
     public function checkLimit(string $moduleSlug, string $modelClass): bool
     {
         $tenant = $this->getActiveTenant();
-        if (! $tenant) {
+        if (!$tenant) {
             return false;
         }
 
@@ -187,7 +187,7 @@ class TenantManager
                 ->where('tenant_id', $tenantId)
                 ->first();
 
-            if (! $pivot) {
+            if (!$pivot) {
                 return [];
             }
 
@@ -217,10 +217,10 @@ class TenantManager
         Cache::forget("tenant_{$tenantId}_ai_limit");
     }
 
-    public function clearUserCache(int $userId, int $tenantId): void
-    {
-        Cache::store('file')->forget("user_{$userId}_tenant_{$tenantId}_permissions");
-    }
+    // public function clearUserCache(int $userId, int $tenantId): void
+    // {
+    //     Cache::store('file')->forget("user_{$userId}_tenant_{$tenantId}_permissions");
+    // }
 
     // public function clearCache(int $userId, int $tenantId): void
     // {

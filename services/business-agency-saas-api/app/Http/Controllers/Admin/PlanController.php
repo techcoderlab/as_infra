@@ -9,6 +9,10 @@ use App\Models\Tenant;
 use App\Services\TenantManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class PlanController extends Controller
 {
@@ -25,7 +29,7 @@ class PlanController extends Controller
     {
         $user = request()->user();
 
-        if (! $user || ! $user->isSuperAdmin()) {
+        if (!$user || !$user->isSuperAdmin()) {
             return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
         }
 
@@ -39,7 +43,7 @@ class PlanController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isSuperAdmin()) {
+        if (!$user || !$user->isSuperAdmin()) {
             return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
         }
 
@@ -66,14 +70,14 @@ class PlanController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isSuperAdmin()) {
+        if (!$user || !$user->isSuperAdmin()) {
             return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
         }
 
         $validated = $request->validate([
             'name' => 'required|string',
             // Unique check must ignore the current plan's ID
-            'slug' => 'required|string|unique:plans,slug,'.$plan->id,
+            'slug' => 'required|string|unique:plans,slug,' . $plan->id,
             'price' => 'numeric',
             'modules' => 'array', // format: [{id: 1, limit: 10}, ...]
         ]);
@@ -112,7 +116,7 @@ class PlanController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isSuperAdmin()) {
+        if (!$user || !$user->isSuperAdmin()) {
             return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
         }
 
@@ -135,14 +139,96 @@ class PlanController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isSuperAdmin()) {
+        if (!$user || !$user->isSuperAdmin()) {
             return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
         }
 
-        $module = Module::create($request->validate([
+        $validated = $request->validate([
             'name' => 'required|string',
             'slug' => 'required|string|unique:modules,slug',
-        ]));
+            'route' => 'nullable|string',
+            'icon' => 'nullable|array',
+        ]);
+
+        $module = Module::create($validated);
+
+
+
+        $module->plans()->chunkById(10, function (Collection $plans) {
+            foreach ($plans as $plan) {
+                $plan->tenants()->chunkById(50, function (Collection $tenants) {
+                    foreach ($tenants as $tenant) {
+                        try {
+                            $this->tenantManager->clearTenantCache($tenant->id);
+                        } catch (Throwable $exception) {
+                            // Log the error so one failure does not crash the entire loop
+                            Log::error("Failed to clear cache for tenant {$tenant->id}: " . $exception->getMessage());
+                        }
+                    }
+                });
+
+                // Free memory after processing each plan's tenant batch
+                unset($plan);
+            }
+        });
+
+        Cache::store('file')->forget("core_modules_slugs");
+
+        return response()->json($module);
+    }
+
+    public function updateModule(Request $request, Module $module)
+    {
+        $user = $request->user();
+
+        if (!$user || !$user->isSuperAdmin()) {
+            return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string',
+            'slug' => 'required|string|unique:modules,slug,' . $module->id,
+            'route' => 'nullable|string',
+            'icon' => 'nullable|array',
+        ]);
+
+        // Core slugs that application logic relies on
+        // $coreSlugs = ['crm', 'leads', 'forms', 'ai_chats', 'webhooks'];
+        // $coreSlugs = array_keys(config('modules.metadata', []));
+
+        $coreSlugs = Cache::rememberForever('core_modules_slugs', function () {
+            return Module::distinct()->pluck('slug')->toArray();
+        });
+
+
+        if (in_array($module->slug, $coreSlugs) && $validated['slug'] !== $module->slug) {
+            return response()->json([
+                'message' => 'Cannot modify the slug of a core module, as it will break application logic.'
+            ], Response::HTTP_CONFLICT);
+        }
+
+
+        $module->update($validated);
+
+
+        $module->plans()->chunkById(10, function (Collection $plans) {
+            foreach ($plans as $plan) {
+                $plan->tenants()->chunkById(50, function (Collection $tenants) {
+                    foreach ($tenants as $tenant) {
+                        try {
+                            $this->tenantManager->clearTenantCache($tenant->id);
+                        } catch (Throwable $exception) {
+                            // Log the error so one failure does not crash the entire loop
+                            Log::error("Failed to clear cache for tenant {$tenant->id}: " . $exception->getMessage());
+                        }
+                    }
+                });
+
+                // Free memory after processing each plan's tenant batch
+                unset($plan);
+            }
+        });
+
 
         return response()->json($module);
     }
@@ -153,7 +239,7 @@ class PlanController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isSuperAdmin()) {
+        if (!$user || !$user->isSuperAdmin()) {
             return response()->json(['message' => 'Forbidden'], Response::HTTP_FORBIDDEN);
         }
 

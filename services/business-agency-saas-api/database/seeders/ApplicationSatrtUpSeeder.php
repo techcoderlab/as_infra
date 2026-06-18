@@ -82,7 +82,11 @@ class ApplicationSatrtUpSeeder extends Seeder
         foreach ($modules as $key => $moduleData) {
             Module::updateOrCreate(
                 ['slug' => $key],
-                ['name' => $moduleData['label']]
+                [
+                    'name' => $moduleData['label'],
+                    'route' => $moduleData['route'] ?? null,
+                    'icon' => $moduleData['icon'] ?? null,
+                ]
             );
         }
         $this->command->info('Modules synced.');

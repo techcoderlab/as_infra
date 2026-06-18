@@ -10,14 +10,14 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Client\Pool;
 
 class DispatchWebhookBatchJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries = 3;
-
-    public $backoff = [5, 30, 120];
+    // No need for retries here since individual failures are dispatched as separate jobs
+    public $tries = 1;
 
     public function __construct(
         public array $data,
@@ -27,13 +27,7 @@ class DispatchWebhookBatchJob implements ShouldQueue
 
     public function handle()
     {
-        // $payload = [
-        //     'event' => $this->event,
-        //     'timestamp' => now()->toIso8601String(),
-        //     'data' => $this->data,
-        // ];
-
-        Http::pool(function ($pool) {
+        $responses = Http::pool(function (Pool $pool) {
             foreach ($this->webhooks as $wh) {
 
                 $headers = [
@@ -46,13 +40,26 @@ class DispatchWebhookBatchJob implements ShouldQueue
                         hash_hmac('sha256', json_encode($this->data), $wh->secret);
                 }
 
+                $method = strtolower($wh->method ?? 'post');
+
                 $pool
                     ->as("wh_{$wh->id}")
                     ->withHeaders($headers)
                     ->timeout(8)
-                    ->post($wh->url, $this->data);
+                    ->send($method, $wh->url, ['json' => $this->data]);
             }
         });
+
+        // Check for failures and dispatch individual retry jobs
+        foreach ($this->webhooks as $wh) {
+            $response = $responses["wh_{$wh->id}"] ?? null;
+            
+            // If the request threw a connection exception or returned an error status
+            if (!$response || $response instanceof \Exception || $response->failed()) {
+                Log::warning("Webhook {$wh->id} failed in batch. Dispatching individual retry job.");
+                RetrySingleWebhookJob::dispatch($this->data, $wh, $this->event)->delay(now()->addSeconds(5));
+            }
+        }
     }
 }
 

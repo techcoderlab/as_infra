@@ -7,9 +7,10 @@ const plans = ref([])
 const modules = ref([])
 const loading = ref(false)
 const showModal = ref(false)
+const showModuleModal = ref(false)
 const saving = ref(false)
 
-// Form State
+// Form State (Plan)
 const isEditing = ref(false)
 const form = ref({
   id: null,
@@ -20,6 +21,15 @@ const form = ref({
   module_configs: {},
 })
 
+// Form State (Module)
+const moduleForm = ref({
+    id: null,
+    name: '',
+    slug: '',
+    route: '',
+    icon: '',
+})
+
 // --- Actions ---
 
 const fetchData = async () => {
@@ -28,6 +38,7 @@ const fetchData = async () => {
     const { data } = await request.get('/plans-data') // Ensure this endpoint returns { plans: [], modules: [] }
     plans.value = data.plans
     modules.value = data.modules
+
   } catch (e) {
     console.error('Failed to load plans', e)
   } finally {
@@ -131,6 +142,59 @@ const deletePlan = async (id) => {
   }
 }
 
+const openEditModule = (mod) => {
+    moduleForm.value = { 
+        id: mod.id, 
+        name: mod.name, 
+        slug: mod.slug, 
+        route: mod.route || '', 
+        icon: mod.icon ? JSON.stringify(mod.icon) : ''
+    }
+    showModuleModal.value = true
+}
+
+const saveModule = async () => {
+    saving.value = true
+    try {
+        let iconArray = null;
+        if (moduleForm.value.icon) {
+            let val = moduleForm.value.icon.trim();
+            try {
+                const parsed = JSON.parse(val);
+                iconArray = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (e) {
+                try {
+                    const fixed = val.replace(/'/g, '"');
+                    const parsed = JSON.parse(fixed);
+                    iconArray = Array.isArray(parsed) ? parsed : [parsed];
+                } catch(e2) {
+                    val = val.replace(/^\[\s*['"]?/, '').replace(/['"]?\s*\]$/, '');
+                    iconArray = [val];
+                }
+            }
+        }
+
+        const payload = { 
+            name: moduleForm.value.name, 
+            slug: moduleForm.value.slug,
+            route: moduleForm.value.route || null,
+            icon: iconArray
+        }
+
+        if (moduleForm.value.id) {
+            await request.put(`/modules/${moduleForm.value.id}`, payload)
+        } else {
+            await request.post('/modules', payload)
+        }
+        await fetchData()
+        showModuleModal.value = false
+    } catch (e) {
+        alert('Failed to save module: ' + (e.response?.data?.message || e.message))
+    } finally {
+        saving.value = false
+    }
+}
+
 onMounted(fetchData)
 </script>
 
@@ -198,7 +262,29 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <!-- Modules Section -->
+    <div class="flex items-center justify-between mt-12 mb-4 border-t border-slate-200 dark:border-slate-800 pt-8">
+      <h2 class="text-xl font-semibold text-slate-900 dark:text-white">System Modules</h2>
+      <button
+        class="px-3 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 transition-colors font-medium"
+        @click="() => { moduleForm = {id: null, name: '', slug: '', route: '', icon: ''}; showModuleModal = true; }"
+      >
+        + Create Module
+      </button>
+    </div>
+
+    <div v-if="loading" class="text-slate-500 text-center py-10">Loading...</div>
+    <div v-else class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div v-for="mod in modules" :key="mod.id" class="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 p-4 flex flex-col shadow hover:shadow-md transition-shadow">
+            <h3 class="font-bold text-slate-900 dark:text-white">{{ mod.name }}</h3>
+            <p class="text-xs text-slate-500 font-mono mt-1 mb-4">{{ mod.slug }}</p>
+            <div class="mt-auto flex justify-end">
+                <button @click="openEditModule(mod)" class="text-blue-600 hover:text-blue-800 text-xs font-bold uppercase">Edit</button>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="showModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div
         class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
         @click="showModal = false"
@@ -305,6 +391,42 @@ onMounted(fetchData)
             @click="savePlan"
           >
             {{ saving ? 'Saving...' : isEditing ? 'Update Plan' : 'Create Plan' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Module Modal -->
+    <div v-if="showModuleModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModuleModal = false"></div>
+      <div class="relative w-full max-w-md bg-white dark:bg-slate-950 shadow-2xl rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col">
+        <div class="p-6 border-b border-slate-100 dark:border-slate-800">
+          <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+            {{ moduleForm.id ? 'Edit Module' : 'Create Module' }}
+          </h3>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Module Name</label>
+              <input v-model="moduleForm.name" type="text" class="w-full border rounded-lg px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-slate-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Slug (System ID)</label>
+              <input v-model="moduleForm.slug" type="text" :disabled="['crm', 'leads', 'forms', 'ai_chats', 'webhooks'].includes(moduleForm.slug)" class="w-full border rounded-lg px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-slate-500 disabled:opacity-50" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Route (Optional)</label>
+              <input v-model="moduleForm.route" type="text" placeholder="/admin/module-name" class="w-full border rounded-lg px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-slate-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Icon (SVG Path)</label>
+              <textarea v-model="moduleForm.icon" rows="3" placeholder='e.g. ["M15..."] or just the path string' class="w-full border rounded-lg px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-slate-500 font-mono"></textarea>
+            </div>
+        </div>
+        <div class="flex justify-end gap-3 p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl">
+          <button class="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg dark:text-slate-300 dark:hover:bg-slate-800 transition-colors" @click="showModuleModal = false">Cancel</button>
+          <button class="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-lg shadow-lg" :disabled="saving" @click="saveModule">
+            {{ saving ? 'Saving...' : 'Save Module' }}
           </button>
         </div>
       </div>

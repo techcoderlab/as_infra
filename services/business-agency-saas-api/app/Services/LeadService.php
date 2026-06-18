@@ -45,15 +45,16 @@ class LeadService
             // Dispatch Event (AI Trigger)
             LeadCreated::dispatch($lead);
 
-            // $form->triggerWebhooks($event, [
-            //     'data' => [
-            //         'id' => $lead->id,
-            //         'payload' => $lead->payload ?? [],
-            //         'source' => 'form',
-            //         'created_timestamp' => $lead->created_at->toIso8601String(),
-            //         'form_event' => $event
-            //     ],
-            // ]);
+            $event = 'form.submission';
+            $form->triggerWebhooks($event, [
+                'data' => [
+                    'id' => $lead->id,
+                    'payload' => $lead->payload ?? [],
+                    'source' => 'form',
+                    'created_timestamp' => $lead->created_at->toIso8601String(),
+                    'form_event' => $event
+                ],
+            ]);
 
             return $lead;
         });

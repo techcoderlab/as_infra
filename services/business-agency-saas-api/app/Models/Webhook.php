@@ -14,6 +14,7 @@ class Webhook extends Model
         'tenant_id',
         'name',
         'url',
+        'method',
         'secret',
         'events',
         'is_active',
