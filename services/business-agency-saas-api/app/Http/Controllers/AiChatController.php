@@ -27,7 +27,8 @@ class AiChatController extends Controller
         // Trait automatically filters by tenant_id
 
         // Cache::forget('ai_agents');
-        $agents = Cache::remember('ai_agents', 30, function () {
+        $tenantId = Auth::user()->current_tenant_id;
+        $agents = Cache::remember("ai_agents_{$tenantId}", 30, function () {
             return AiAgent::select('id', 'slug', 'is_active')->latest()->get();
         });
 

@@ -544,9 +544,12 @@ class LeadController extends Controller
 
         // 1. DISCOVERY PHASE: Find all unique payload keys
         // We use a separate query to get only the payloads to save RAM.
+        // LIMIT discovery to the latest 1000 leads to avoid catastrophic full table scans.
         $query = Lead::where('tenant_id', $tenantId);
         if (! empty($selectedIds)) {
             $query->whereIn('id', $selectedIds);
+        } else {
+            $query->latest('id')->limit(1000);
         }
 
         $allKeys = [];

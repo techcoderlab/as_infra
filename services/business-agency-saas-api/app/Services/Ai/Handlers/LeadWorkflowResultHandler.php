@@ -73,26 +73,35 @@ class LeadWorkflowResultHandler implements WorkflowResultHandler
     protected function logActivity(Model $target, array $parsedData, array $thoughtStream): void
     {
         // Add detailed parsedData
-        $details = collect($parsedData ?? [])
+        // Extract only the keys you need
+        $neededData = collect($parsedData ?? [])
             ->only(['summary', 'reasoning', 'recommended_action'])
-            ->filter(fn($v) => !empty($v))
+            ->map(fn($v) => is_numeric($v) ? (string) $v : trim($v))
+            ->filter(); // Automatically removes null, false, and empty strings, but keeps "0"
+
+        if ($neededData->isEmpty()) {
+            return;
+        }
+
+        // Option A: Keeps them separated by newlines
+        // $details = $neededData->implode(PHP_EOL);
+
+        // Option B (Recommended): Format with labels so the text makes sense
+        $details = $neededData->map(fn($v, $k) => ucfirst(str_replace('_', ' ', $k)) . ": $v")
             ->implode(PHP_EOL);
 
-        if (!empty($details)) {
-            $activity = [
-                'lead_id' => $target->id,
-                'type' => 'ai_updated',
-                'content' => $details,
-                'metadata' => json_encode([
-                    'responseData' => $parsedData ?? [],
-                    'thoughtStream' => $thoughtStream ?? [],
-                ]),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-
-            LeadActivity::insert([$activity]);
-        }
+        $activity = [
+            'lead_id' => $target->id,
+            'type' => 'ai_updated',
+            'content' => $details,
+            'metadata' => json_encode([
+                'responseData' => $parsedData ?? [],
+                'thoughtStream' => $thoughtStream ?? [],
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+        LeadActivity::insert([$activity]);
 
 
         $form = $target->form;
@@ -123,8 +132,10 @@ class LeadWorkflowResultHandler implements WorkflowResultHandler
                             ],
                             [
                                 'name' => '🧠 AI Analysis',
-                                'value' => $details,
-                                'inline' => false 
+                                'value' => $neededData->except('reasoning')
+                                    ->map(fn($v, $k) => ucfirst(str_replace('_', ' ', $k)) . ": $v")
+                                    ->implode(PHP_EOL),
+                                'inline' => false
                             ]
                         ],
                         'footer' => [

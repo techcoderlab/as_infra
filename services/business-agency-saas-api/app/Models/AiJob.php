@@ -22,7 +22,8 @@ class AiJob extends Model
     ];
 
     protected $casts = [
-        'payload' => 'array',
+        'payload' => 'encrypted:array',
+        // 'payload' => 'encrypted:json',
         'result' => 'array',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',

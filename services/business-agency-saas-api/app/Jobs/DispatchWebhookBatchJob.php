@@ -23,7 +23,8 @@ class DispatchWebhookBatchJob implements ShouldQueue
         public array $data,
         public $webhooks,   // Collection<Webhook>
         public string $event
-    ) {}
+    ) {
+    }
 
     public function handle()
     {
@@ -33,6 +34,8 @@ class DispatchWebhookBatchJob implements ShouldQueue
                 $headers = [
                     'User-Agent' => 'AgencySaaS-Webhook/1.0',
                     'Content-Type' => 'application/json',
+                    // 'Event' => $this->event,
+                    // 'Event-Timestamp' => now()->toIso8601String(),
                 ];
 
                 if ($wh->secret) {
@@ -53,11 +56,26 @@ class DispatchWebhookBatchJob implements ShouldQueue
         // Check for failures and dispatch individual retry jobs
         foreach ($this->webhooks as $wh) {
             $response = $responses["wh_{$wh->id}"] ?? null;
-            
-            // If the request threw a connection exception or returned an error status
-            if (!$response || $response instanceof \Exception || $response->failed()) {
+
+            // Determine if the failure is retryable
+            $shouldRetry = false;
+
+            if (!$response || $response instanceof \Exception) {
+                // Network error, DNS failure, timeout, etc.
+                $shouldRetry = true;
+            } elseif ($response->serverError() || in_array($response->status(), [408, 429])) {
+                // 5xx Server Error or Rate Limit / Timeout
+                $shouldRetry = true;
+            }
+
+            if ($shouldRetry) {
                 Log::warning("Webhook {$wh->id} failed in batch. Dispatching individual retry job.");
                 RetrySingleWebhookJob::dispatch($this->data, $wh, $this->event)->delay(now()->addSeconds(5));
+            } elseif ($response && $response->clientError()) {
+                // Log it but don't retry 4xx errors because they are client errors (e.g. Bad Request, Unauthorized)
+                Log::warning("Webhook {$wh->id} returned 4xx client error in batch. Will not retry.", [
+                    'status' => $response->status(),
+                ]);
             }
         }
     }

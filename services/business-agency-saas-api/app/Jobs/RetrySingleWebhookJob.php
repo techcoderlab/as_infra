@@ -43,12 +43,20 @@ class RetrySingleWebhookJob implements ShouldQueue
         $method = strtolower($this->webhook->method ?? 'post');
 
         try {
-            Http::withHeaders($headers)
+            $response = Http::withHeaders($headers)
                 ->timeout(10)
                 ->send($method, $this->webhook->url, [
                     'json' => $this->data
-                ])
-                ->throw();
+                ]);
+
+            if ($response->serverError() || in_array($response->status(), [408, 429])) {
+                $response->throw();
+            } elseif ($response->clientError()) {
+                Log::warning("Webhook {$this->webhook->id} returned 4xx client error on retry. Will not throw.", [
+                    'status' => $response->status(),
+                ]);
+                // Don't throw, so the job completes successfully and doesn't retry
+            }
         } catch (\Exception $e) {
             Log::error("Webhook {$this->webhook->id} failed to deliver event {$this->event}: " . $e->getMessage());
             throw $e;

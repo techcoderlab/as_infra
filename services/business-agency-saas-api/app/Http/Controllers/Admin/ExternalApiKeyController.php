@@ -6,7 +6,7 @@
 // Pillar Compliance:
 // [x] P0 Stack Bootstrap (PHP 8.2+, Laravel)
 // [x] P1 Architecture (Delegates complex logic, handles HTTP)
-// [x] P2 Security (Validates inputs, revokes tokens)
+// [x] P2 Security (SuperAdmin guard, validates inputs, revokes tokens)
 // [x] P6 Resilience (Handles errors gracefully)
 // [x] P8 Code Quality (Strict typing, clear names)
 
@@ -15,6 +15,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ExternalApiKey;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -28,7 +29,11 @@ class ExternalApiKeyController extends Controller
      */
     public function index()
     {
-        // TODO: Ensure this is protected by super-admin middleware
+        // P2: Platform-level keys are super-admin–only resources.
+        if (! Auth::user()?->isSuperAdmin()) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         $keys = ExternalApiKey::select(['id', 'app_id', 'for', 'is_active', 'created_at', 'updated_at'])
             ->orderByDesc('created_at')
             ->get();
@@ -45,6 +50,11 @@ class ExternalApiKeyController extends Controller
      */
     public function store(Request $request)
     {
+        // P2: Only the super-admin may issue platform-level credentials.
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         $validated = $request->validate([
             'for' => 'required|string|max:255',
         ]);
@@ -89,6 +99,11 @@ class ExternalApiKeyController extends Controller
      */
     public function destroy(string $id)
     {
+        // P2: Revocation of platform-level credentials requires super-admin authority.
+        if (! Auth::user()?->isSuperAdmin()) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         $key = ExternalApiKey::findOrFail($id);
 
         try {
@@ -119,6 +134,11 @@ class ExternalApiKeyController extends Controller
      */
     public function rotate(string $id)
     {
+        // P2: Key rotation is a privileged super-admin–only operation.
+        if (! Auth::user()?->isSuperAdmin()) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         $key = ExternalApiKey::findOrFail($id);
         $newPlaintextSecret = 'sk_live_'.bin2hex(random_bytes(16));
 
@@ -147,3 +167,4 @@ class ExternalApiKeyController extends Controller
         }
     }
 }
+

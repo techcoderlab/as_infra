@@ -129,7 +129,7 @@ class TenantManager
 
         $cacheKey = "tenant_{$tenant->id}_modules";
 
-        return Cache::store('file')->remember($cacheKey, 3600, function () use ($tenant) {
+        return Cache::store('file')->remember($cacheKey, 60, function () use ($tenant) {
             // Fetch modules through the plan relationship
             return DB::table('modules')
                 ->join('module_plan', 'modules.id', '=', 'module_plan.module_id')
@@ -180,7 +180,7 @@ class TenantManager
         $tenantId = $this->getActiveTenant()?->id ?? 0;
         $cacheKey = "user_{$user->id}_tenant_{$tenantId}_permissions";
 
-        return Cache::store('file')->remember($cacheKey, 3600, function () use ($user, $tenantId) {
+        return Cache::store('file')->remember($cacheKey, 60, function () use ($user, $tenantId) {
             // Fetch roles/permissions specific to this tenant from the tenant_user pivot
             $pivot = DB::table('tenant_user')
                 ->where('user_id', $user->id)

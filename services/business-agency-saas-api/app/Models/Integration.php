@@ -15,6 +15,10 @@ class Integration extends Model
         'is_brain' => 'boolean',
     ];
 
+    protected $hidden = [
+        'value',
+    ];
+
     public function tenant()
     {
         return $this->belongsTo(Tenant::class);

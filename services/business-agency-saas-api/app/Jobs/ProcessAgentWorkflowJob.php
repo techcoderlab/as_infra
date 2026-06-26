@@ -262,6 +262,9 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                     'status' => 'failed',
                     'error_message' => 'AI Job failed: ' . Str::limit($exception->getMessage(), 500),
                 ]);
+                
+                // Throw exception so Laravel Queue handles the retry
+                throw $exception;
             });
 
             Log::info("[ProcessAgentWorkflowJob]: Handoff initiated for {$aiJobRecord->job_uuid}");

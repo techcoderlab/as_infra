@@ -129,9 +129,25 @@ class IntegrationController extends Controller
             ]
         );
 
+        $creds = $integration->value ?? [];
+        $maskedCreds = [];
+        foreach ($creds as $k => $v) {
+            $maskedCreds[$k] = substr($v, 0, 4).'...';
+        }
+        
+        $entry = [
+            'id' => $integration->id,
+            'service' => $integration->service,
+            'name' => config("ai_providers.services.{$integration->service}.name") ?? $integration->service,
+            'masked_value' => $maskedCreds,
+            'is_active' => $integration->is_active,
+            'is_brain' => $integration->is_brain,
+            'created_at' => $integration->created_at,
+        ];
+
         return response()->json([
             'success' => true,
-            'entry' => $integration, // Return entry so Vue can update list immediately
+            'entry' => $entry, // Return entry so Vue can update list immediately
             'message' => 'Connected successfully.',
         ]);
     }
@@ -188,9 +204,25 @@ class IntegrationController extends Controller
 
         $integration->save();
 
+        $creds = $integration->value ?? [];
+        $maskedCreds = [];
+        foreach ($creds as $k => $v) {
+            $maskedCreds[$k] = substr($v, 0, 4).'...';
+        }
+        
+        $entry = [
+            'id' => $integration->id,
+            'service' => $integration->service,
+            'name' => config("ai_providers.services.{$integration->service}.name") ?? $integration->service,
+            'masked_value' => $maskedCreds,
+            'is_active' => $integration->is_active,
+            'is_brain' => $integration->is_brain,
+            'created_at' => $integration->created_at,
+        ];
+
         return response()->json([
             'success' => true,
-            'entry' => $integration, // Return entry so Vue can update list immediately
+            'entry' => $entry, // Return entry so Vue can update list immediately
             'message' => 'Updated successfully.',
         ]);
     }
