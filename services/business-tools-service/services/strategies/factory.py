@@ -2,6 +2,8 @@ from services.strategies.base import LLMStrategy
 from services.strategies.openai_strategy import OpenAIStrategy
 from services.strategies.gemini_strategy import GeminiStrategy
 from services.strategies.anthropic_strategy import AnthropicStrategy
+from services.strategies.cloudflare_strategy import CloudflareStrategy   # ← NEW
+
 
 class LLMStrategyFactory:
     @staticmethod
@@ -13,5 +15,12 @@ class LLMStrategyFactory:
             return GeminiStrategy()
         elif provider_lower in ["anthropic", "claude"]:
             return AnthropicStrategy()
+        # ── NEW: Cloudflare Workers AI ────────────────────────────────────────
+        elif provider_lower in ("cloudflare", "cf", "workers_ai", "workersai"):
+            return CloudflareStrategy()
+        # ─────────────────────────────────────────────────────────────────────
         else:
-            raise ValueError(f"Provider {provider} not supported.")
+            raise ValueError(
+                f"Provider '{provider}' not supported. "
+                "Valid options: openai, gemini, anthropic, cloudflare"
+            )

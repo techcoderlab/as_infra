@@ -1,5 +1,6 @@
 import httpx
 import asyncio
+from contextlib import asynccontextmanager
 from core.logger import logger
 
 # Initialize a standard logger for this module
@@ -92,6 +93,18 @@ class HttpClient:
     async def put(self, url: str, **kwargs) -> httpx.Response:
         """HTTP PUT with per-request config via kwargs (timeout, retries, backoff)."""
         return await self.request("PUT", url, **kwargs)
+
+    @asynccontextmanager
+    async def stream(self, method: str, url: str, **kwargs):
+        """
+        Stream an HTTP response.
+        Note: Bypasses the auto-retry loop because stream state (like SSE chunks) 
+        cannot be safely replayed automatically midway. Callers should implement 
+        their own retry logic when using stream().
+        """
+        request_timeout = kwargs.pop("timeout", self._default_timeout)
+        async with self._client.stream(method, url, timeout=request_timeout, **kwargs) as resp:
+            yield resp
 
     async def close(self) -> None:
         await self._client.aclose()

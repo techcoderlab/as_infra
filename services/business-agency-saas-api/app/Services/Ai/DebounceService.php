@@ -34,7 +34,7 @@ class DebounceService
         // Prevents sending more than 5 messages in 10 seconds.
         if (RateLimiter::tooManyAttempts($aggressiveKey, 5)) {
             // Check if we have already sent a warning for this specific limit cycle
-            if (! Cache::has($aggressiveWarnedKey)) {
+            if (!Cache::has($aggressiveWarnedKey)) {
                 Log::warning("[DebounceService] Aggressive burst detected for {$platformId}");
 
                 if ((string) $session->platform === 'whatsapp') {
@@ -71,10 +71,12 @@ class DebounceService
         $processingLock = "{$sessionKey}:processing";
         $dirtyFlag = "{$sessionKey}:dirty";
 
+        // Cache::forget($processingLock);
+        // Cache::forget($dirtyFlag);
+
         if (Cache::has($processingLock)) {
             Log::info("[DebounceService] Session {$platformId} is busy. Marking as DIRTY.");
             Cache::put($dirtyFlag, true, 300);
-
             return;
         }
 

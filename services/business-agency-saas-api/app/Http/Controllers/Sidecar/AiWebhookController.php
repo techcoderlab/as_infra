@@ -36,7 +36,7 @@ class AiWebhookController extends Controller
         $status = $data['status'] ?? null;
         $result = $data['data'] ?? null;
 
-        if (! $jobUuid) {
+        if (!$jobUuid) {
             Log::error('[AiWebhookController] Missing job_uuid in payload');
 
             return response()->json(['error' => 'Invalid Payload: Missing job_uuid'], 422);
@@ -45,8 +45,8 @@ class AiWebhookController extends Controller
         // 3. FIND JOB
         $job = AiJob::where('job_uuid', $jobUuid)->first();
 
-        if (! $job) {
-            Log::error('[AiWebhookController] Job not found: '.$jobUuid);
+        if (!$job) {
+            Log::error('[AiWebhookController] Job not found: ' . $jobUuid);
 
             return response()->json(['error' => 'Job not found'], 400);
         }
@@ -98,9 +98,12 @@ class AiWebhookController extends Controller
 
         // 6. Finalize session (Dirty Flag pattern)
         $sessionKey = $job->payload['debounce_session_key'] ?? null;
+        // Log::info('[AiWebhookController] Session platform is', ['payload' => $job->payload]);
         if ($sessionKey) {
 
-            $session_platform = $job->payload['context']['data']['chat_session_platform'] ?? null;
+            $session_platform = $job->payload['context']['data']['chat_session_data']['chat_session_platform']
+                ?? $job->payload['context']['data']['chat_session_platform']
+                ?? null;
             $eventClass = null;
 
             if ($session_platform === 'whatsapp') {
@@ -108,7 +111,7 @@ class AiWebhookController extends Controller
             }
 
             if ($eventClass) {
-                Log::info('[AiWebhookController] Finalizing session '.$sessionKey.' for event '.$eventClass);
+                Log::info('[AiWebhookController] Finalizing session ' . $sessionKey . ' for event ' . $eventClass);
                 app(DebounceService::class, ['eventClass' => $eventClass])->finalize($sessionKey);
             }
         }

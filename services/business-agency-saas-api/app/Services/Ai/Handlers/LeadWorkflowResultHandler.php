@@ -50,11 +50,20 @@ class LeadWorkflowResultHandler implements WorkflowResultHandler
 
         try {
 
-            // Update the score of the lead if available in the response
-            if (isset($parsedData['score'])) {
-                if ($target->score !== (int) $parsedData['score']) {
-                    $target->updateQuietly(['score' => (int) $parsedData['score']]);
-                }
+            // Update the score, status, and temperature of the lead if available in the response
+            $updates = [];
+            if (isset($parsedData['score']) && $target->score !== (int) $parsedData['score']) {
+                $updates['score'] = (int) $parsedData['score'];
+            }
+            if (isset($parsedData['status']) && $target->status !== $parsedData['status']) {
+                $updates['status'] = $parsedData['status'];
+            }
+            if (isset($parsedData['temperature']) && $target->temperature !== $parsedData['temperature']) {
+                $updates['temperature'] = $parsedData['temperature'];
+            }
+
+            if (!empty($updates)) {
+                $target->updateQuietly($updates);
             }
 
             // Log the Activity / Audit Trail for Lead Timeline

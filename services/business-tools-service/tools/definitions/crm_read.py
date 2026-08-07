@@ -45,12 +45,13 @@ class LeadReaderTool(BaseTool):
         start_date: str = None, 
         end_date: str = None, 
         limit: int = 5, 
-        context: dict = None
+        context: dict = None,
+        **kwargs
     ):
         context = context or {}
         
         # 1. Security & Context Validation
-        tenant_id = context.get("tenant_id", None)
+        tenant_id = context.get("global_data", {}).get("tenant_id") or context.get("tenant_id")
         
         if not tenant_id:
             mcp_logger.error(f"[LeadReaderTool] Missing Tenant Context. Aborting.")

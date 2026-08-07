@@ -6,6 +6,7 @@ from core.http import get_client
 from core.logger import mcp_logger
 from core.decorators import tool_timeout
 import json
+import ast
 from core.security import generate_laravel_hmac_headers
 
 class LeadData(BaseModel):
@@ -41,8 +42,19 @@ class LeadWriterTool(BaseTool):
     args_schema = UpdateLeadArgs
 
     @tool_timeout(seconds=10) # Protect this specific tool
-    async def run(self, target_id: int, data: dict, context: dict = None):
+    async def run(self, target_id: int, data: dict = None, context: dict = None, **kwargs):
         context = context or {}
+        if isinstance(data, str):
+            try:
+                data = json.loads(data.replace("'", '"').replace("True", "true").replace("False", "false").replace("None", "null"))
+            except Exception:
+                try:
+                    data = ast.literal_eval(data)
+                except Exception:
+                    data = {}
+        data = data or {}
+        if isinstance(data, dict):
+            data.update(kwargs)
         
         # # 0. Access this tool's config (if any) from context securely
         # config = context.get('tool_configs', {}).get(self.name, {})
@@ -50,7 +62,7 @@ class LeadWriterTool(BaseTool):
         
         
         # 1. Security Check
-        tenant_id = context.get("tenant_id")
+        tenant_id = context.get("global_data", {}).get("tenant_id") or context.get("tenant_id")
         if not tenant_id:
             return {"isError": True, "content": {"type": "text", "text": "Tenant context missing."}}
 

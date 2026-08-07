@@ -385,7 +385,7 @@ class AiChatController extends Controller
                         'user_name' => $user->name,
                         'tenant_id' => $aiChat->tenant_id,
                         'chat_id' => $aiChat->id, // Pass ID for tool context
-                        'current_date_time' => now()->toDateTimeString(),
+                        'current_date_time' => now()->toIso8601String(),
                     ],
                     $history,
                     $lastUserMessage->content

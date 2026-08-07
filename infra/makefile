@@ -100,6 +100,9 @@ seed: ## Run seeders
 optimize: ## Clear cache/optimize
 	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan optimize:clear
 
+cache-clear: ## Clear cache/clear
+	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan cache:clear
+
 dump-autoload: ## Dump autoload
 	docker exec -it $(AS_LARAVEL_CONTAINER) composer dump-autoload
 

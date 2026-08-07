@@ -6,6 +6,7 @@ use App\Models\AiAgent;
 use App\Models\LeadChatSession;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 
 class WorkflowPayload implements Arrayable
 {
@@ -26,7 +27,8 @@ class WorkflowPayload implements Arrayable
         public readonly ?string $handlerClass,
         public readonly array $toolConfigs = [],
         private ?array $tempValueContainer = null
-    ) {}
+    ) {
+    }
 
     // --- ADD THIS METHOD ---
     public static function fromArray(array $data): self
@@ -62,30 +64,48 @@ class WorkflowPayload implements Arrayable
             ? $target->toAiContext()
             : $target->withoutRelations()->toArray();
 
+        $timeNowForAi = now()->toIso8601String();
+
         $context_addition = [
-            'tenant_id' => $target->tenant_id,
-            'tenant_name' => $target->tenant->name,
-            'target_id' => $target->getKey(),
-            'current_date_time' => now()->toDateTimeString(),
+            'global_data' => [
+                'tenant_id' => $target->tenant_id,
+                'tenant_name' => $target->tenant->name,
+                'target_id' => $target->getKey(),
+                'current_date_time' => $timeNowForAi
+            ]
         ];
 
+
         if ($session) {
-            $context_addition['chat_session_id'] = $session->getKey();
-            $context_addition['chat_session_platform'] = $session->platform;
-            // $context_addition['chat_session_message_count'] = $session->message_count;
-            $context_addition['chat_session_status'] = $session->status;
-            $context_addition['chat_session_last_interaction'] = $session->last_interaction_at->toDateTimeString();
+            $context_addition['chat_session_data'] = [
+                'chat_session_id' => $session->getKey(),
+                'chat_session_platform' => $session->platform,
+                'chat_session_status' => $session->status,
+                'chat_session_last_interaction' => $session->last_interaction_at->toIso8601String(),
+            ];
+
+            // $session->message_count - Not included in this context as it might be a security/privacy risk or just not needed for the AI to know.
         }
 
         /* Uncomment if $target data needs to send in the context as well */
-        $context_addition = array_merge($information, $context_addition);
+        $context_addition['target_data'] = $information;
 
-        $goal = '';
-        if (! empty($target->payload['text'])) {
-            $goal = $agent->hydratePrompt().'User Message: '.$target->payload['text'];
-        } else {
-            $goal = $agent->hydratePrompt($information);
-        }
+        $goal = $agent->hydratePrompt();
+
+
+        // $goal = '';
+        // if (!empty($target->payload['text'])) {
+        //     $lastUserMessage = $target->activities()->whereIn('type', ['message_received'])->latest()->first()?->content;
+
+        //     $lastUserMessage = $lastUserMessage ? " # USER INPUT: \n \"{$lastUserMessage}\" " : "";
+
+        //     Log::info("[WorkflowPayload]: last User Message: ", [$lastUserMessage]);
+
+        //     $goal = $agent->hydratePrompt() . $lastUserMessage;
+        //     // $goal = $agent->hydratePrompt().'# USER INPUT: '.$target->payload['text'];
+        // } else {
+        //     $goal = $agent->hydratePrompt($information);
+        // }
 
         return new self(
             targetType: class_basename($target),
@@ -111,7 +131,7 @@ class WorkflowPayload implements Arrayable
 
     public function setTempValue($key, $value): void
     {
-        if (! isset($this->tempValueContainer)) {
+        if (!isset($this->tempValueContainer)) {
             $this->tempValueContainer = [];
         }
 

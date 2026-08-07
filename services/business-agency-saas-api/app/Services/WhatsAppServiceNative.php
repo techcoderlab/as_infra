@@ -83,7 +83,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
      */
     protected function _sendRequest(array $payload)
     {
-        if (! $this->integration) {
+        if (!$this->integration) {
             Log::error("[WhatsAppService]: No active integration for tenant {$this->tenantId}");
 
             return false;
@@ -93,7 +93,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
         $phoneNumberId = $config['phone_id'] ?? null;
         $accessToken = $config['api_key'] ?? null;
 
-        if (! $phoneNumberId || ! $accessToken) {
+        if (!$phoneNumberId || !$accessToken) {
             Log::error("[WhatsAppService]: Missing config for tenant {$this->tenantId}");
 
             return false;
@@ -121,6 +121,11 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
         // 2. Execute Request
         $url = "{$this->baseUrl}/{$this->apiVersion}/{$phoneNumberId}/messages";
 
+        // Meta's WhatsApp Cloud API requires the phone number to start with a '+'
+        if (!str_starts_with($payload['to'], '+')) {
+            $payload['to'] = '+' . $payload['to'];
+        }
+
         try {
             Log::info("[WhatsAppService]: Sending message to {$payload['to']} via {$phoneNumberId}");
 
@@ -143,7 +148,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
 
             return false;
         } catch (\Exception $e) {
-            Log::error('[WhatsAppService]: Exception sending message: '.$e->getMessage());
+            Log::error('[WhatsAppService]: Exception sending message: ' . $e->getMessage());
 
             return false;
         }

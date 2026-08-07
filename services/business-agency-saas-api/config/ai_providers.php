@@ -33,6 +33,20 @@ return [
             // 'default_model' => 'claude-3-5-sonnet-20240620',
             'default_model' => 'claude-haiku-3-5-20240620',
         ],
+        'cloudflare' => [
+            'enabled' => true,
+            'name' => 'Cloudflare Workers AI',
+            'logo' => 'https://cdn.simpleicons.org/cloudflare/F6821F',
+            'default_model' => '@cf/meta/llama-3.1-8b-instruct-fp8',
+            'fields' => [
+                [
+                    'name' => 'api_key',
+                    'type' => 'password',
+                    'label' => 'API Token|Account ID  (format: <token>|<account_id>)',
+                    'required' => true,
+                ],
+            ],
+        ],
         'whatsapp' => [
             'name' => 'WhatsApp', // This is not an AI provider, but a tool
             'enabled' => true,

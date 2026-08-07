@@ -69,6 +69,11 @@ class WhatsAppService extends AbstractMessagingService implements MessagingProvi
     {
         $config = $this->integration ? $this->integration->value : [];
 
+        // Meta's WhatsApp Cloud API requires the phone number to start with a '+'
+        if (!str_starts_with($to, '+')) {
+            $to = '+' . $to;
+        }
+
         return [
             'config' => [
                 'phone_number_id' => (string) ($config['phone_id'] ?? ''),

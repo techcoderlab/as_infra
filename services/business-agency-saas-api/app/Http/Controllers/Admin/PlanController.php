@@ -54,6 +54,8 @@ class PlanController extends Controller
             'modules' => 'array', // format: [{id: 1, limit: 10}, {id: 2, limit: -1}]
         ]);
 
+        $validated['price'] = $request['price'] ?? 0;
+
         $plan = Plan::create($validated);
 
         // Sync Modules with Limits

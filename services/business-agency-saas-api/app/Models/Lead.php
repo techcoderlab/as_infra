@@ -39,17 +39,69 @@ class Lead extends Model
     public function toAiContext(): array
     {
         $payload = (array) ($this->payload ?? []);
-        
+
         // PII Masking: Redact sensitive fields
-        $piiKeys = ['email', 'phone', 'ssn', 'password', 'credit_card', 'cc_number', 'dob', 'address', 'first_name', 'last_name', 'name'];
-        foreach ($piiKeys as $key) {
-            if (isset($payload[$key])) {
-                $payload[$key] = '[REDACTED]';
-            }
-        }
+        // 1. Lowercase your expanded patterns for exact, robust matching
+        $piiPatterns = [
+            'name',
+            'first_name',
+            'last_name',
+            'middle_name',
+            'surname',
+            'username',
+            'login',
+            'email',
+            'mail',
+            'phone',
+            'tel',
+            'mobile',
+            'address',
+            'street',
+            'zip',
+            'postal',
+            'ssn',
+            'social_security',
+            'tax_id',
+            'passport',
+            'dl_number',
+            'driver_license',
+            'dob',
+            'date_of_birth',
+            'birth',
+            'age',
+            'gender',
+            'password',
+            'pwd',
+            'pass',
+            'secret',
+            'token',
+            'api_key',
+            'apikey',
+            'pin',
+            'credit_card',
+            'cc_number',
+            'card_num',
+            'cvv',
+            'cvc',
+            'iban',
+            'account_num'
+        ];
+
+        // 2. Run the loop on your original payload structure
+        // foreach ($payload as $key => $value) {
+        //     $normalizedKey = strtolower($key);
+
+        //     foreach ($piiPatterns as $pattern) {
+        //         // Catches exact matches and variations (e.g., 'user_email', 'PASSWORD')
+        //         if (str_contains($normalizedKey, $pattern)) {
+        //             $payload[$key] = '[REDACTED]';
+        //             break; // Stop checking patterns for this key, move to next payload key
+        //         }
+        //     }
+        // }
 
         return [
-            'id' => $this->getKey(),
+            // 'id' => $this->getKey(),
             'status' => $this->status,
             'temperature' => $this->temperature,
             'source' => $this->source,
@@ -58,7 +110,7 @@ class Lead extends Model
             // Only expose specific safe fields from payload/metadata
             'payload' => !empty($payload) ? $payload : null,
             // 'recent_activity' => $this->activities()->limit(5)->get()->map(fn($a) => $a->content)->toArray(),
-            'created_at' => $this->created_at->toDateTimeString(),
+            'created_at' => $this->created_at->toIso8601String(),
         ];
     }
 
