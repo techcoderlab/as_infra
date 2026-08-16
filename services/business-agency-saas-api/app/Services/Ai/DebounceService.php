@@ -76,7 +76,7 @@ class DebounceService
 
         if (Cache::has($processingLock)) {
             Log::info("[DebounceService] Session {$platformId} is busy. Marking as DIRTY.");
-            Cache::put($dirtyFlag, true, 300);
+            Cache::put($dirtyFlag, true, 120);
             return;
         }
 
@@ -125,8 +125,8 @@ class DebounceService
     {
         $processingLock = "{$sessionKey}:processing";
 
-        // Lock for 5 minutes (safety timeout)
-        Cache::put($processingLock, true, 300);
+        // Lock for 2 minutes (safety timeout)
+        Cache::put($processingLock, true, 120);
 
         Log::info("[DebounceService] Triggering AI immediately for {$session->platform_user_id}");
 

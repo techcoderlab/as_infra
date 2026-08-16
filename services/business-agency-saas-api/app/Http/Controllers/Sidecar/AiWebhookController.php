@@ -98,7 +98,7 @@ class AiWebhookController extends Controller
 
         // 6. Finalize session (Dirty Flag pattern)
         $sessionKey = $job->payload['debounce_session_key'] ?? null;
-        // Log::info('[AiWebhookController] Session platform is', ['payload' => $job->payload]);
+        Log::info('[AiWebhookController] Session platform is', ['payload' => $job->payload]);
         if ($sessionKey) {
 
             $session_platform = $job->payload['context']['data']['chat_session_data']['chat_session_platform']
