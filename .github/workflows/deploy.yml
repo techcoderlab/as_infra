@@ -87,7 +87,7 @@ jobs:
   deploy:
     name: Deploy to OptiPlex
     needs: build
-    runs-on: [self-hosted, optiplex]
+    runs-on: self-hosted
     steps:
       # Deliberately NOT actions/checkout — that would check the repo out
       # into the runner's own separate _work/ directory, which would then
