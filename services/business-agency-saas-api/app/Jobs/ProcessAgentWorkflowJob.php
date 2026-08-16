@@ -60,21 +60,23 @@ class ProcessAgentWorkflowJob implements ShouldQueue
 
         // We use firstOrCreate so we don't overwrite job_uuid on retries.
         // We will update the status later down.
+        // We use firstOrCreate with job_uuid so new messages create new records,
+        // but queue retries of the SAME message reuse the existing record.
         $aiJobRecord = AiJob::firstOrCreate(
+            [
+                'job_uuid' => $this->payload->getTempValue('job_uuid') ?? (string) Str::uuid(),
+            ],
             [
                 'tenant_id' => $this->tenantId,
                 'agent_slug' => $this->payload->context['agent_config']['slug'],
                 'target_id' => $this->payload->targetId,
                 'target_type' => $targetType,
-            ],
-            [
                 'status' => 'pending',
                 'payload' => array_merge(
                     $this->payload->toArray(),
                     ['debounce_session_key' => $this->payload->getTempValue('debounce_session_key')]
                 ),
                 'error_message' => null,
-                'job_uuid' => (string) Str::uuid(), // Only set on creation
                 'attempts' => 0,
             ]
         );

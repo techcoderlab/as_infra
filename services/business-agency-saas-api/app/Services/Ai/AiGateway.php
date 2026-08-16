@@ -87,6 +87,10 @@ class AiGateway
             $contextPayload->setTempValue('debounce_session_key', $sessionKey);
         }
 
+        // Generate a unique Job UUID here so retries of the same job reuse it,
+        // but new interactions get a fresh AiJob record.
+        $contextPayload->setTempValue('job_uuid', (string) \Illuminate\Support\Str::uuid());
+
         ProcessAgentWorkflowJob::dispatch(
             tenantId: $tenantId,
             payload: $contextPayload
