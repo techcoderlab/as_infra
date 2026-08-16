@@ -3,6 +3,7 @@ import hashlib
 import time
 import redis.asyncio as aioredis
 from fastapi import Request, HTTPException
+from starlette.requests import ClientDisconnect
 from core.config import settings
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.exceptions import InvalidSignature
@@ -149,7 +150,10 @@ async def verify_hmac_signature(request: Request):
         raise HTTPException(status_code=401, detail="Invalid X-App-Id or key has been revoked")
 
     # 4. Verify HMAC Signature
-    body = await request.body()
+    try:
+        body = await request.body()
+    except ClientDisconnect:
+        raise HTTPException(status_code=499, detail="Client Closed Request")
     expected_string = timestamp.encode('utf-8') + body
     
     # Run the HMAC math using the specific developer's secret

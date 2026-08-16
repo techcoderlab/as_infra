@@ -163,16 +163,17 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             });
 
-            /**
-             * CRITICAL: Settle the promise.
-
-             * wait(false) tells Guzzle: "Start sending now, but don't throw an
-
-             * exception here if it fails; let the .catch() handle it."
-             */
-            $promise->wait(false);
-
         }
+
+        /**
+         * CRITICAL: Settle the promise.
+         * We MUST wait for the promise to settle. If we don't, Guzzle will
+         * destroy the cURL handle when the function returns, causing a 
+         * ClientDisconnect error on the Python sidecar before it finishes reading.
+         * wait(false) tells Guzzle: "Wait for the request, but don't throw an
+         * exception here if it fails; let the .catch() handle it."
+         */
+        $promise->wait(false);
 
         Log::info("[AI ADAPTER]: AI Job {$jobUuid} enqueued successfully");
 
