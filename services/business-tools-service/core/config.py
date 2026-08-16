@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str = Field(default="redis", validation_alias="REDIS_HOST") # or "localhost"
     REDIS_PORT: int = Field(default=6379, validation_alias="REDIS_PORT")
+    REDIS_PASSWORD: str = Field(default="", validation_alias="REDIS_PASSWORD")
     
     # Maps env var "MCP_SIDECAR_LOG_FILE" -> Class var "AGENT_LOG_FILE"
     AGENT_LOG_FILE: str = Field(

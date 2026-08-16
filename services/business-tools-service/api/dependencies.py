@@ -110,6 +110,7 @@ from cryptography.exceptions import InvalidSignature
 # Initialize a global Redis connection pool
 redis_client = aioredis.from_url(
     f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", 
+    password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
     decode_responses=True # Returns strings instead of raw bytes
 )
 
