@@ -230,8 +230,8 @@ services:
       options: { max-size: "10m", max-file: "5" }
     deploy:
       resources:
-        limits: { cpus: "0.75", memory: 1024M }
-        reservations: { cpus: "0.25", memory: 384M }
+        limits: { cpus: "1.0", memory: 2048M }
+        reservations: { cpus: "0.25", memory: 500M }
 
   ##############################################################################
   # agency-saas-queue-worker-default — web-critical + default queues
@@ -355,8 +355,8 @@ services:
       options: { max-size: "10m", max-file: "5" }
     deploy:
       resources:
-        limits: { cpus: "0.60", memory: 768M }
-        reservations: { memory: 192M }
+        limits: { cpus: "0.80", memory: 1024M }
+        reservations: { memory: 384M }
 
   ##############################################################################
   # scheduler — Laravel task scheduler (cron replacement)
@@ -462,8 +462,8 @@ services:
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.75", memory: 768M }
-        reservations: { memory: 256M }
+        limits: { cpus: "1.0", memory: 1024M }
+        reservations: { memory: 384M }
 
   ##############################################################################
   # adminer — DB admin UI, LAN-only debug tool
