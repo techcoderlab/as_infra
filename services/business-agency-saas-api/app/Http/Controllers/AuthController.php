@@ -20,12 +20,12 @@ class AuthController extends Controller
         /** @var \App\Models\User|null $user */
         $user = User::where('email', $validated['email'])->first();
 
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+        if (!$user || !Hash::check($validated['password'], $user->password)) {
             return response()->json(['message' => 'Invalid credentials.'], 422);
         }
 
-        // Ensure a current tenant is set for the user
-        if (! $user->current_tenant_id && $user->tenants()->exists()) {
+        // Ensure a current tenant is set for the user -
+        if (!$user->current_tenant_id && $user->tenants()->exists()) {
             $user->current_tenant_id = $user->tenants()->first()->id;
             $user->save();
         }
