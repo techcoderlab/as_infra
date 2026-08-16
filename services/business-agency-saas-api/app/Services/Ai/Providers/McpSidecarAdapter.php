@@ -141,9 +141,9 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             ])
 
-            ->connectTimeout(2) // Aggressive 2s connection timeout
+            ->connectTimeout(5) // 5s connection timeout
 
-            ->timeout(3) // 3s total handoff limit
+            ->timeout(10) // 10s total handoff limit
 
             ->withBody($jsonBody, 'application/json')
 
@@ -170,10 +170,10 @@ class McpSidecarAdapter implements LlmProviderInterface
          * We MUST wait for the promise to settle. If we don't, Guzzle will
          * destroy the cURL handle when the function returns, causing a 
          * ClientDisconnect error on the Python sidecar before it finishes reading.
-         * wait(false) tells Guzzle: "Wait for the request, but don't throw an
-         * exception here if it fails; let the .catch() handle it."
+         * wait(true) tells Guzzle: "Wait for the request, and THROW an exception if it fails
+         * so the Laravel Queue can retry it."
          */
-        $promise->wait(false);
+        $promise->wait(true);
 
         Log::info("[AI ADAPTER]: AI Job {$jobUuid} enqueued successfully");
 
