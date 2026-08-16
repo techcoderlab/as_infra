@@ -1,7 +1,7 @@
 # Variables
 COMPOSE_FILE := docker-compose.yml
-PROJECT_NAME := microservices-stack
-AS_LARAVEL_CONTAINER := business-agency-saas-api
+PROJECT_NAME := as_infra
+AS_LARAVEL_CONTAINER := as_infra_api
 
 # Default command
 .DEFAULT_GOAL := help
@@ -88,9 +88,9 @@ ide-helper: ## Generate IDE helpers
 	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan ide-helper:meta
 
 migrate: ## Run migrations
-	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate
+	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate --force
 migrate-fresh: ## Run migrations
-	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate:fresh
+	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate:fresh --force
 rollback: ## Run rollback
 	docker exec -it $(AS_LARAVEL_CONTAINER) php artisan migrate:rollback
 
