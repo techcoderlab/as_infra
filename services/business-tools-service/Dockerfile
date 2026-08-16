@@ -1,51 +1,29 @@
-# business-tools-service/Dockerfile
+FROM python:3.12-slim AS runtime
 
-# --- Stage 1: Builder ---
-FROM python:3.12-slim as builder
-
-WORKDIR /build
-
-# DEBIAN FIX: Use apt-get instead of apk
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    libvips-dev \
-    libtesseract-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# --- Stage 2: Runtime ---
-FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
 WORKDIR /app
 
-# RUNTIME FIX: You MUST install the runtime library for vips in Stage 2 as well
-# Otherwise, pyvips won't find the .so files
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # libvips42 \
-    # tesseract-ocr \
-    # tesseract-ocr-eng \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN groupadd -r toolsvc && useradd -r -g toolsvc -d /app toolsvc
 
-# 1. Copy dependencies
-COPY --from=builder /install /usr/local
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Copy code
-COPY . .
+COPY . /app
 
-# 3. Create user
-RUN useradd -m appuser && chown -R appuser /app
-USER appuser
+# Ensure directory exists and non-root user owns it before USER switch
+RUN mkdir -p /app/logs && chown -R toolsvc:toolsvc /app
 
-# 4. Set Python Path so imports like "from core.config" work
-ENV PYTHONPATH=/app \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+USER toolsvc
 
 EXPOSE 8017
 
-# 5. THE FIX: Point Gunicorn to "api.server" module, "app" object
-CMD ["gunicorn","api.server:app","--workers", "2","--worker-class", "uvicorn.workers.UvicornWorker","--bind", "0.0.0.0:8017","--timeout", "300","--graceful-timeout", "60","--keep-alive", "5","--forwarded-allow-ips", "*"]
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
+  CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8017/health').getcode() == 200 else 1)"
+
+ENV WEB_CONCURRENCY=2
+
+CMD ["sh", "-c", "gunicorn api.server:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT:-8017} -w ${WEB_CONCURRENCY} --timeout 120 --access-logfile - --error-logfile -"]

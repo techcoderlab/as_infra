@@ -1,54 +1,147 @@
-# infra docker-compose.yml
-# version: "3.9"
+###############################################################################
+# as_infra — Application Stack
+# Path: /opt/docker-data/source-code/as_infra/infra/docker-compose.yml
+#
+# Real repo layout this file assumes (confirmed with you directly):
+#   as_infra/
+#   ├── infra/                              <- this file, infra/.env
+#   ├── gateway/                            <- internal nginx router (build context: repo root)
+#   ├── spa/                                <- standalone Vue 3 app (built INTO the gateway image below)
+#   └── services/
+#       ├── business-agency-saas-api/       <- Laravel API (PHP-FPM)
+#       └── business-tools-service/         <- Python/FastAPI sidecar ("/tools")
+#
+# Target host: Dell OptiPlex 3040 Micro — 192.168.100.100
+# Independent Compose project — does not touch the existing
+# jellyfin/filebrowser/samba stack on this host. Own network
+# (microservices_net), own bind-mount tree
+# (${DATA_ROOT:-/opt/docker-data/app-data/as_infra} on the OptiPlex; set
+# DATA_ROOT to a local path for other environments, e.g. Mac dev — see
+# docs/Deployment-Operations-Checklist.md "Running locally").
+#
+# Only `gateway` publishes a host port (8080). NPM, on the Haier node,
+# proxies to 192.168.100.100:8080 — see docs/NPM-Reverse-Proxy-Guide.md.
+# Everything else — postgres, redis, business-agency-saas-api, both queue
+# workers, business-tools-service, scheduler, adminer — is reachable only
+# inside microservices_net.
+#
+# UFW on the OptiPlex should scope port 8080 to the Haier's LAN IP
+# specifically (not "allow from anywhere"):
+#   sudo ufw allow from 192.168.100.50 to any port 8080 proto tcp comment 'NPM -> as_infra gateway'
+###############################################################################
 
 services:
-  # ───────── Gateway ─────────
+
+  ##############################################################################
+  # gateway — internal application router (NOT the public-facing proxy; NPM is)
+  # Consolidates three backends behind one host port so NPM only needs a
+  # single Proxy Host:
+  #   /            -> the built Vue 3 SPA (static files, baked into this image)
+  #   /api/        -> business-agency-saas-api via FastCGI
+  #   /tools/      -> business-tools-service via HTTP, SSE-friendly (AI chat streaming)
+  ##############################################################################
   gateway:
     build:
-      context: ../gateway
-      dockerfile: Dockerfile
-    container_name: gateway
+      # Repo root as context (not ../gateway) — this image needs to COPY both
+      # gateway/ configs AND ../spa/ source in the same build, so the context
+      # has to be a common ancestor of both.
+      context: ..
+      dockerfile: gateway/Dockerfile
+    image: ${GHCR_NAMESPACE:-as_infra}/gateway:${IMAGE_TAG:-latest}
+    container_name: as_infra_gateway
+    restart: unless-stopped
     ports:
-      - "80:80"
-    restart: always
+      - "${GATEWAY_PORT:-8080}:80"
     environment:
-      # Pass these to Nginx for the dynamic config generation
-      - N8N_DOMAIN=${N8N_HOST}
       - DOMAIN=${DOMAIN}
-
-    volumes:
-      # CRITICAL: Gateway needs access to Laravel public files to serve them
-      - ../services/business-agency-saas-api:/var/www/html
-
-    # Command: Generates nginx.conf from template using .env vars, then starts nginx
-    command: /bin/sh -c "envsubst '$$N8N_DOMAIN $$DOMAIN' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
-
     depends_on:
-      business-tools-service:
-        condition: service_started
       business-agency-saas-api:
-        condition: service_started
-      n8n:
-        condition: service_started
-
+        condition: service_healthy
+      business-tools-service:
+        condition: service_healthy
     networks:
       - microservices_net
-
-  # ───────── Redis ─────────
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: always
-    command: redis-server --maxclients 10000
-    volumes:
-      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits:
-          memory: 512M
-          cpus: "0.20"
-    # ports:
-    #   - "127.0.0.1:6379:6379" # Bind only to your Mac's internal loopback
+        limits: { cpus: "0.50", memory: 150M }
+        reservations: { memory: 32M }
+
+  ##############################################################################
+  # postgres
+  # shared_buffers/max_connections set via `command:` flags below, sized to
+  # this container's memory limit — see docs/Deployment-Operations-Checklist.md
+  # "Sizing Math" for the derivation (and for why the *other* guide's
+  # pm.max_children=60 could never actually run inside a 1G app container).
+  ##############################################################################
+  postgres:
+    image: postgres:15-alpine
+    container_name: as_infra_postgres
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - shared_buffers=384MB
+      - -c
+      - effective_cache_size=1152MB
+      - -c
+      - max_connections=60
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+    volumes:
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_AS_DB}
+      - POSTGRES_USER=${POSTGRES_AS_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - TZ=Asia/Karachi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_AS_USER} -d ${POSTGRES_AS_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - microservices_net
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 1024M }
+        reservations: { cpus: "0.25", memory: 512M }
+
+  ##############################################################################
+  # redis — cache, sessions, AND the Laravel queue driver
+  # maxmemory-policy is `noeviction`, not the other guide's `allkeys-lru` —
+  # this instance backs the queue as well as cache/session data, and LRU
+  # eviction would silently drop pending jobs under memory pressure instead
+  # of failing loudly. See the checklist doc for the full reasoning.
+  ##############################################################################
+  redis:
+    image: redis:7-alpine
+    container_name: as_infra_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxclients 10000
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -56,240 +149,334 @@ services:
       retries: 5
     networks:
       - microservices_net
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { memory: 640M }
+        reservations: { memory: 128M }
 
-  # ───────── DB Admin Tool ─────────
-  adminer:
-    image: adminer
-    container_name: adminer
-    restart: always
-    ports:
-      - "127.0.0.1:8081:8080" # Only accessible locally for security
+  ##############################################################################
+  # business-agency-saas-api — Laravel API (PHP-FPM only)
+  # vendor/ is baked into the image at build time (composer install runs
+  # during the Docker build) — this is the ONE service the workers below
+  # reuse the built image from, so `docker compose build` only compiles it
+  # once instead of three times.
+  ##############################################################################
+  business-agency-saas-api:
+    build:
+      context: ../services/business-agency-saas-api
+      dockerfile: Dockerfile
+    image: ${GHCR_NAMESPACE:-as_infra}/api:${IMAGE_TAG:-latest}
+    container_name: as_infra_api
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - microservices_net
-
-  # ───────── Postgres ─────────
-  postgres:
-    image: postgres:15-alpine
-    # image: pgvector/pgvector:pg15 # Swapped from postgres:15-alpine
-    container_name: postgres
-    restart: always
-    # ports:
-    #   - "127.0.0.1:5432:5432" # Bind only to your Mac's internal loopback
-    volumes:
-      - n8n_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        ["CMD-SHELL", "pg_isready -U ${POSTGRES_AS_USER} -d ${POSTGRES_AS_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - microservices_net
-
-  # ───────── n8n ─────────
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
-    container_name: n8n
-    restart: always
-    # Expose 5678 to localhost so your local ngrok can tunnel to it
-    # ports:
-    #   # - "127.0.0.1:5678:5678"
-    #   - "5678:5678"
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
     environment:
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=${POSTGRES_N8N_DB}
-      - DB_POSTGRESDB_USER=${POSTGRES_N8N_USER}
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_N8N_USER_PASSWORD}
-
-      # Dynamic Configuration from .env
-      - N8N_PROTOCOL=${N8N_PROTOCOL}
-      - N8N_HOST=${N8N_HOST}
-      - N8N_PORT=${N8N_PORT}
-      - WEBHOOK_URL=${N8N_WEBHOOK_URL}
-      - N8N_PATH=${N8N_PATH}
-      - N8N_EDITOR_BASE_URL=${N8N_WEBHOOK_URL}
-
-      # Added to match your working command
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=${N8N_FILE_PERMISSIONS}
-      - N8N_TRUST_PROXY=true
-
-      # To allow crypto module in n8n
-      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
-
-      # Uncomment below line in production
-      # - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - APP_NAME=Agency Saas API
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - APP_URL=${AS_APP_URL}
+      - FRONTEND_URL=${AS_FRONTEND_URL}
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-*}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - QUEUE_CONNECTION=${QUEUE_CONNECTION:-redis}
+      - SESSION_DRIVER=redis
+      - CACHE_STORE=redis
+      - LOG_CHANNEL=stderr
+      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
+      - SCRIBE_AUTH_KEY=${AS_SCRIBE_AUTH_KEY}
+      - PHP_FPM_MAX_CHILDREN=${PHP_FPM_MAX_CHILDREN:-14}
+      - PHP_FPM_START_SERVERS=${PHP_FPM_START_SERVERS:-4}
+      - PHP_FPM_MIN_SPARE_SERVERS=${PHP_FPM_MIN_SPARE_SERVERS:-2}
+      - PHP_FPM_MAX_SPARE_SERVERS=${PHP_FPM_MAX_SPARE_SERVERS:-6}
+      - PHP_FPM_MAX_REQUESTS=${PHP_FPM_MAX_REQUESTS:-1000}
+      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}
+      - OPCACHE_MEMORY_MB=${OPCACHE_MEMORY_MB:-192}
+      - TZ=Asia/Karachi
     volumes:
-      - n8n_data:/home/node/.n8n
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/app:/var/www/html/storage/app
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/logs:/var/www/html/storage/logs
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'php-fpm: master process' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - microservices_net
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 1024M }
+        reservations: { cpus: "0.25", memory: 384M }
+
+  ##############################################################################
+  # agency-saas-queue-worker-default — web-critical + default queues
+  # Reuses the `business-agency-saas-api` image (no separate `build:` here) —
+  # the other guide built this from source a second time, which doubled CI
+  # build time for no benefit since it's identical code.
+  ##############################################################################
+  agency-saas-queue-worker-default:
+    image: ${GHCR_NAMESPACE:-as_infra}/api:${IMAGE_TAG:-latest}
+    container_name: as_infra_worker_default
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - APP_NAME=Agency Saas API
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - APP_URL=${AS_APP_URL}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - QUEUE_CONNECTION=${QUEUE_CONNECTION:-redis}
+      - LOG_CHANNEL=stderr
+      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
+      - TZ=Asia/Karachi
+    volumes:
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/app:/var/www/html/storage/app
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/logs:/var/www/html/storage/logs
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=web-critical,default", "--tries=3", "--sleep=1", "--timeout=90", "--max-time=3600"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - microservices_net
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    deploy:
+      resources:
+        limits: { cpus: "0.40", memory: 512M }
+        reservations: { memory: 128M }
 
-  # ───────── Business Tools Service ─────────
+  ##############################################################################
+  # agency-saas-queue-worker-ai — ai-heavy queue only
+  # Lower --tries (2, not 3) and a hard --max-jobs=50 recycle: AI jobs are
+  # slower and more likely to hit provider-side timeouts, so failing faster
+  # and recycling the worker process periodically both matter more here
+  # than on the default queue.
+  ##############################################################################
+  agency-saas-queue-worker-ai:
+    image: ${GHCR_NAMESPACE:-as_infra}/api:${IMAGE_TAG:-latest}
+    container_name: as_infra_worker_ai
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - APP_NAME=Agency Saas API
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - APP_URL=${AS_APP_URL}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - QUEUE_CONNECTION=${QUEUE_CONNECTION:-redis}
+      - LOG_CHANNEL=stderr
+      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
+      - TZ=Asia/Karachi
+    volumes:
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/app:/var/www/html/storage/app
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/logs:/var/www/html/storage/logs
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=ai-heavy", "--tries=2", "--sleep=2", "--timeout=180", "--max-jobs=50", "--max-time=3600"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'queue:work' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - microservices_net
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    deploy:
+      resources:
+        limits: { cpus: "0.60", memory: 768M }
+        reservations: { memory: 192M }
+
+  ##############################################################################
+  # scheduler — Laravel task scheduler (cron replacement)
+  # Runs `php artisan schedule:work` — a SINGLE long-running process that
+  # boots Laravel once and internally checks for due tasks every minute,
+  # rather than a shell loop re-spawning `php artisan schedule:run` (a full
+  # cold PHP/Laravel bootstrap) every 60 seconds. That earlier approach is
+  # what caused the periodic CPU spikes: with CLI opcache disabled
+  # (opcache.enable_cli=0), every fresh process re-parses and re-compiles
+  # the entire framework + vendor/ tree from scratch, forever, every
+  # minute — real, measurable CPU tax that gets worse under real client
+  # load, not less. `schedule:work` compiles once at startup and just sits
+  # there.
+  # NOT present in the reference guide this was built from — added here
+  # because something needs to call `queue:restart`, token pruning, etc.
+  ##############################################################################
+  scheduler:
+    image: ${GHCR_NAMESPACE:-as_infra}/api:${IMAGE_TAG:-latest}
+    container_name: as_infra_scheduler
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - APP_KEY=${AS_APP_KEY}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - LOG_CHANNEL=stderr
+      - TZ=Asia/Karachi
+    volumes:
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/laravel/storage/logs:/var/www/html/storage/logs
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    command: ["php", "artisan", "schedule:work"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'schedule:work' || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - microservices_net
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { cpus: "0.40", memory: 96M }
+        reservations: { memory: 32M }
+
+  ##############################################################################
+  # business-tools-service — Python/FastAPI sidecar ("/tools")
+  # Reachable at PORT internally; the gateway proxies /tools/ to it with
+  # buffering disabled for SSE (AI chat streaming).
+  ##############################################################################
   business-tools-service:
     build:
       context: ../services/business-tools-service
       dockerfile: Dockerfile
-    image: micro-business-tools-service:latest
-    container_name: business-tools-service
-    restart: always
+    image: ${GHCR_NAMESPACE:-as_infra}/tools:${IMAGE_TAG:-latest}
+    container_name: as_infra_tools
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     environment:
       - ENV=production
-      - PORT=8017
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
+      - PORT=${TOOLS_PORT:-8017}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - APP_URL=${AS_APP_URL}
       - LARAVEL_APP_ID=${LARAVEL_APP_ID}
       - LARAVEL_APP_SECRET=${LARAVEL_APP_SECRET}
       - ALLOWED_CALLBACK_DOMAINS=${ALLOWED_CALLBACK_DOMAINS}
-      # - ROOT_PATH=
-      # CRITICAL FIX: Tells FastAPI it is served behind /tools
       - ROOT_PATH=/tools
-
-    deploy:
-      resources:
-        limits:
-          # cpus: "0.40"
-          # memory: 512M
-          cpus: "1.0"
-          memory: 1GB
-    depends_on:
-      redis:
-        condition: service_healthy
+      - TZ=Asia/Karachi
     volumes:
-      # Map the container's log folder to a 'logs' folder on your host
-      - ./logs:/app/logs
+      - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/tools/logs:/app/logs
+    healthcheck:
+      # python:3.12-slim's runtime stage has no wget/curl installed — this
+      # container's own Python interpreter is the one thing guaranteed present.
+      test: ["CMD", "python3", "-c", "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",8017)}/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - microservices_net
-
-  # ───────── Laravel API (PHP-FPM) ─────────
-  business-agency-saas-api:
-    build:
-      context: ../services/business-agency-saas-api # Point to your Laravel folder
-      dockerfile: Dockerfile
-    container_name: business-agency-saas-api
-    restart: always
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits:
-          cpus: "0.40"
-          memory: 512M
-    volumes:
-      # Sync code changes immediately for development
-      - ../services/business-agency-saas-api:/var/www/html
+        limits: { cpus: "0.75", memory: 768M }
+        reservations: { memory: 256M }
+
+  ##############################################################################
+  # adminer — DB admin UI, LAN-only debug tool
+  # Bound to 127.0.0.1 on the OptiPlex itself, matching the original guide —
+  # reach it via `ssh -L 8081:127.0.0.1:8081 serveradmin@192.168.100.100`,
+  # never expose it through NPM.
+  ##############################################################################
+  adminer:
+    image: adminer:latest
+    container_name: as_infra_adminer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - microservices_net
-    environment:
-      - APP_NAME=Agency Saas API
-      - APP_ENV=production
-      - APP_KEY=${AS_APP_KEY}
-      - FRONTEND_URL=${AS_FRONTEND_URL}
-      - APP_URL=${AS_APP_URL}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - DB_CONNECTION=pgsql
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${POSTGRES_AS_DB}
-      - DB_USERNAME=${POSTGRES_AS_USER}
-      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
-      - QUEUE_CONNECTION=redis
-      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
-      # - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
-      - SCRIBE_AUTH_KEY=${AS_SCRIBE_AUTH_KEY}
-
-  # 1. Standard Worker: Fast, high-priority business logic
-  agency-saas-queue-worker-default:
-    build: ../services/business-agency-saas-api
-    container_name: agency-saas-worker-default
-    restart: always
-    # Focus: Speed and reliability for web-critical tasks
-    command: php artisan queue:work redis --queue=web-critical,default --tries=3 --timeout=60 --sleep=1
-    volumes:
-      - ../services/business-agency-saas-api:/var/www/html
-    environment:
-      - APP_NAME=Agency Saas API
-      - APP_ENV=production
-      - APP_KEY=${AS_APP_KEY}
-      - APP_URL=${AS_APP_URL}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - DB_CONNECTION=pgsql
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${POSTGRES_AS_DB}
-      - DB_USERNAME=${POSTGRES_AS_USER}
-      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
-      - QUEUE_CONNECTION=redis
-      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
-      # - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits:
-          cpus: "0.30" # Reserve half a core for standard tasks
-          memory: 512M
-    depends_on:
-      redis: { condition: service_healthy }
-      postgres: { condition: service_healthy }
-    networks:
-      - microservices_net
+        limits: { memory: 64M }
 
-  # 2. AI Heavy Worker: Slow, high-latency LLM tasks
-  agency-saas-queue-worker-ai:
-    build: ../services/business-agency-saas-api
-    container_name: agency-saas-worker-ai
-    restart: always
-    # Optimization: restarts every 50 jobs to prevent Python-sidecar-related memory leaks
-    # timeout=300 gives the AI 5 minutes to finish without the worker killing it
-    command: php artisan queue:work redis --queue=ai-heavy --tries=2 --max-jobs=50 --timeout=300 --sleep=1
-    volumes:
-      - ../services/business-agency-saas-api:/var/www/html
-    environment:
-      - APP_NAME=Agency Saas API
-      - APP_ENV=production
-      - APP_KEY=${AS_APP_KEY}
-      - APP_URL=${AS_APP_URL}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - DB_CONNECTION=pgsql
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${POSTGRES_AS_DB}
-      - DB_USERNAME=${POSTGRES_AS_USER}
-      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
-      - QUEUE_CONNECTION=redis
-      - MCP_SIDECAR_URL=${MCP_SIDECAR_SERVICE_URL}
-      # - MCP_SERVICE_TOKEN=${MCP_SIDECAR_CRM_SERVICE_TOKEN}
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50" # Give AI more CPU burst capability
-          memory: 512M # Dedicated memory for large context processing
-    depends_on:
-      redis: { condition: service_healthy }
-      postgres: { condition: service_healthy }
-    networks:
-      - microservices_net
-
-# --- Networking ---
+##############################################################################
+# Networks
+# microservices_net: isolated bridge network for as_infra only. Does not
+# connect to the media stack's `internal-net` on this same host.
+##############################################################################
 networks:
   microservices_net:
     driver: bridge
-
-volumes:
-  n8n_data:
-    external: true
-  n8n_postgres_data:
-    external: true
-  redis_data:
+    name: as_infra_microservices_net

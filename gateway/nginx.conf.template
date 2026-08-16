@@ -1,153 +1,101 @@
-events {
-    worker_connections 1024;
+###############################################################################
+# gateway/nginx.conf.template — rendered to /etc/nginx/conf.d/app.conf at
+# container start (DOMAIN substituted from the environment).
+#
+# This container never terminates TLS — NPM does that. It trusts and passes
+# through the X-Forwarded-* headers NPM already sets (see
+# docs/NPM-Reverse-Proxy-Guide.md and TRUSTED_PROXIES in infra/.env).
+###############################################################################
+
+upstream laravel_upstream {
+    server business-agency-saas-api:9000;
+    keepalive 16;
 }
 
-http {
-    include        mime.types;
-    default_type   application/octet-stream;
-    server_tokens off;
-    client_max_body_size 50M;
+upstream tools_upstream {
+    server business-tools-service:8017;
+    keepalive 8;
+}
 
-    # 1. Laravel PHP-FPM Upstream
-    upstream agency_sass_api {
-        server business-agency-saas-api:9000; 
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    # ---- Health endpoint (no upstream dependency) --------------------------
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
     }
 
-    # 2. Python Business Tools Upstream (Unified Service)
-    upstream business_tools {
-        server business-tools-service:8017;
-        keepalive 32;
+    # ---- Vue 3 SPA -----------------------------------------------------------
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
     }
 
-    # 3. n8n Upstream
-    upstream n8n_server {
-        server n8n:5678;
+    location ~* \.(?:css|js|mjs|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|ico)$ {
+        try_files $uri =404;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
     }
 
-
-    server {
-        listen 80;
-        server_name ${DOMAIN} gateway;
-
-        # Root points to the Laravel public folder mounted in Gateway container
-        root /var/www/html/public;
-        index index.php index.html;
-
-        # --- A. Laravel Main Route (Static Files) ---
-        location / {
-            # Checks for file -> folder -> passes to PHP
-            try_files $uri $uri/ /index.php?$query_string;
-            
-            # REMOVED: proxy_* directives here were useless because 
-            # this block serves files or passes to @php, it does not proxy HTTP.
-        }
-
-
-        # --- B. Laravel PHP Execution (PHP-FPM) ---
-        location ~ \.php$ {
-            fastcgi_pass agency_sass_api;
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-            
-            # Headers
-            fastcgi_param HTTP_X_REAL_IP $remote_addr;
-            fastcgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;
-            fastcgi_param HTTP_X_FORWARDED_PROTO $scheme;
-
-            # --- FIX FOR STREAMING ---
-            # 1. Disable FastCGI Buffering explicitly
-            # This ensures PHP sends data to Nginx and Nginx sends it to the user immediately.
-            fastcgi_buffering off;
-
-            # 2. Increase Read Timeout
-            # Prevents Nginx from cutting off the connection while the AI is "Thinking"
-            fastcgi_read_timeout 300s;
-        }
-
-        # --- C. Business Tools Route ---
-        location /tools/ {
-
-            # Fix: Redirect /tools/docs -> /tools/docs/ 
-            # This prevents relative link breakage for Swagger UI assets
-            # location = /tools/docs {
-            #     return 302 /tools/docs/;
-            # }
-
-
-            # Trailing slash matches /tools/ and strips it when passing to backend
-            # e.g., /tools/health -> http://business_tools/health
-            proxy_pass http://business_tools/;
-            
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # --- D. AI Agent Routes (CRITICAL OPTIMIZATIONS) ---
-        location /tools/v1/agent/ {
-            proxy_pass http://business_tools/v1/agent/;
-            
-            # 1. Streaming Optimizations (Required for SSE/Chat)
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_set_header Connection '';
-            proxy_http_version 1.1;
-            
-            # 2. Timeout Increase (CRITICAL)
-            # Default is 60s. LLMs often take longer to "think" or finish large contexts.
-            proxy_read_timeout 300s;
-            proxy_connect_timeout 300s;
-            proxy_send_timeout 300s;
-
-            # 3. Headers
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # --- E.1. Fix for n8n cURL Import (WebAssembly requested at root) ---
-        location = /tree-sitter.wasm {
-            proxy_pass http://n8n_server/tree-sitter.wasm;
-            proxy_set_header Host $host;
-        }
-
-        # --- E. n8n Automation Route ---
-        location /n8n/ {
-            # CRITICAL: The trailing slash on proxy_pass strips the /n8n/ prefix
-            # before sending it to the backend. This allows n8n to resolve /assets/.
-            proxy_pass http://n8n_server/;
-            
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_set_header Connection '';
-            proxy_http_version 1.1;
-            chunked_transfer_encoding off;
-
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header X-Forwarded-Prefix /n8n;
-
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "Upgrade";
-            
-            proxy_read_timeout 600s;
-            proxy_connect_timeout 600s;
-        }
+    # ---- Laravel's own health check — /up ------------------------------------
+    # Laravel 11's `health: '/up'` in bootstrap/app.php registers this route
+    # OUTSIDE the `api` group, so it is NOT under /api and would otherwise
+    # fall through to the SPA's `location /` (returning index.html, not a
+    # real health check) without this explicit block.
+    location = /up {
+        include /etc/nginx/fastcgi-laravel.conf;
     }
 
-    # ───────── Health Check ─────────
-    # Catches traffic to IP or unknown domains (AWS LB / DigitalOcean Checks)
-    server {
-        listen 80 default_server;
-        server_name _;
-        
-        location /health {
-            add_header Content-Type application/json;
-            return 200 '{"status":"healthy"}';
-        }
+    # ---- Laravel SSE chat streaming — /api/ai-chats/*/chat-stream -----------
+    # routes/api.php has a signed, streaming chat-stream route served
+    # directly by Laravel (not business-tools-service). Buffering has to be
+    # off here specifically — disabling it on the *whole* /api/ block below
+    # would hurt every ordinary JSON response's latency for no reason, so
+    # this narrower regex location (nginx matches regex locations before
+    # the general prefix block) carries the SSE settings instead.
+    location ~ ^/api/ai-chats/.+/chat-stream$ {
+        include /etc/nginx/fastcgi-laravel.conf;
+        fastcgi_buffering off;
+        fastcgi_read_timeout 300s;
+    }
+
+    # ---- business-tools-service (Python/FastAPI) — /tools/ -------------------
+    # SSE-friendly: buffering and caching disabled so AI chat responses
+    # from the sidecar reach the client token-by-token instead of being
+    # buffered whole.
+    location /tools/ {
+        proxy_pass http://tools_upstream/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+
+        # Needed if the sidecar also serves a websocket endpoint under /tools/
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # ---- business-agency-saas-api (Laravel) — /api/ — everything else -------
+    # No shared filesystem with this container: SCRIPT_FILENAME is a fixed
+    # string that must match Laravel's front-controller path *inside the
+    # api container's own image* (/var/www/html/public/index.php) — it does
+    # not need to exist here. Every request under /api/ is dynamic, so file
+    # existence checks are skipped entirely.
+    location /api/ {
+        include /etc/nginx/fastcgi-laravel.conf;
+        fastcgi_read_timeout 90s;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
     }
 }

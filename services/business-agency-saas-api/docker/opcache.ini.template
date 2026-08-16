@@ -1,0 +1,29 @@
+; ##############################################################################
+; opcache.ini.template — rendered to /usr/local/etc/php/conf.d/98-opcache.ini
+; by entrypoint.sh at container start.
+;
+; validate_timestamps=0 means opcache NEVER checks source files for changes
+; after first compile — correct for production, but it means a deploy MUST
+; recreate this container to pick up new code. The GitHub Actions deploy
+; workflow always does (`docker compose up -d` after pulling a new image),
+; so this is safe by construction.
+; ##############################################################################
+
+opcache.enable = 1
+opcache.enable_cli = 1
+opcache.memory_consumption = ${OPCACHE_MEMORY_MB}
+opcache.interned_strings_buffer = 16
+
+; Laravel + vendor/ across 50 tenants' worth of routes/config/views easily
+; clears 10-15k files; headroom avoids silent cache eviction thrashing.
+opcache.max_accelerated_files = 20000
+
+opcache.validate_timestamps = 0
+opcache.revalidate_freq = 0
+opcache.save_comments = 1
+opcache.fast_shutdown = 1
+
+; JIT — modest tracing-mode buffer, carved out of this container's 1024M
+; ceiling. Helps CPU-bound request handling on the i3-6100T's limited cores.
+opcache.jit = tracing
+opcache.jit_buffer_size = 64M

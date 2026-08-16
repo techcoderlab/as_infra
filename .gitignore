@@ -1,5 +1,19 @@
 /base
 *.zip
 extract_here.zip
-services/business_tts_stt-service/
-services/document_extraction_bot/
+
+# Environment / secrets — never commit real values
+infra/.env
+infra/.env.*
+!infra/.env.example
+
+# Dependency directories (built inside Docker, not needed in git)
+spa/node_modules/
+spa/dist/
+services/business-agency-saas-api/vendor/
+services/business-tools-service/__pycache__/
+services/business-tools-service/venv/
+
+# OS / editor noise
+.DS_Store
+*.log
