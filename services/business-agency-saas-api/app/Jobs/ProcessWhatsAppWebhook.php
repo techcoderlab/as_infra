@@ -234,8 +234,10 @@ class ProcessWhatsAppWebhook implements ShouldQueue
         });
 
         // 3. Trigger AI logic outside of the transaction
-        app(DebounceService::class, ['eventClass' => self::EVENT_CLASS])
-            ->trigger($lead, $session);
+        // app(DebounceService::class, ['eventClass' => self::EVENT_CLASS])
+        //     ->trigger($lead, $session);
+        
+        event(new self::EVENT_CLASS($lead, $session));
 
         Log::info('Logged ' . self::PLATFORM_LABEL . " activity for Lead #{$lead->id}");
     }

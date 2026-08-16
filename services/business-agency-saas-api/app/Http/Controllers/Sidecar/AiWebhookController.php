@@ -112,7 +112,7 @@ class AiWebhookController extends Controller
 
             if ($eventClass) {
                 Log::info('[AiWebhookController] Finalizing session ' . $sessionKey . ' for event ' . $eventClass);
-                app(DebounceService::class, ['eventClass' => $eventClass])->finalize($sessionKey);
+                // app(DebounceService::class, ['eventClass' => $eventClass])->finalize($sessionKey);
             }
         }
 
