@@ -264,6 +264,12 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                     'status' => 'failed',
                     'error_message' => 'AI Job failed: ' . Str::limit($exception->getMessage(), 500),
                 ]);
+
+                // Clear the lock immediately if we fail before webhook
+                $sessionKey = $this->payload->getTempValue('debounce_session_key');
+                if ($sessionKey) {
+                    \Illuminate\Support\Facades\Cache::forget("{$sessionKey}:processing");
+                }
                 
                 // Throw exception so Laravel Queue handles the retry
                 throw $exception;
@@ -276,6 +282,13 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                 'status' => 'failed',
                 'error_message' => 'AI Job failed: ' . Str::limit($e->getMessage(), 500),
             ]);
+
+            // Clear the lock immediately
+            $sessionKey = $this->payload->getTempValue('debounce_session_key');
+            if ($sessionKey) {
+                \Illuminate\Support\Facades\Cache::forget("{$sessionKey}:processing");
+            }
+
             throw $e;
         }
     }
