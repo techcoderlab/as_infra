@@ -87,6 +87,13 @@ jobs:
   deploy:
     name: Deploy to OptiPlex
     needs: build
+    # Was [self-hosted, optiplex] — that requires the runner to actually
+    # carry a custom "optiplex" label, which it doesn't by default (GitHub
+    # only auto-assigns self-hosted/Linux/X64). With one self-hosted runner
+    # in this repo, plain `self-hosted` is enough and removes a whole class
+    # of "job stuck waiting for a runner" mismatch. Add a custom label later
+    # only if you register a second self-hosted runner and need to target
+    # a specific one.
     runs-on: self-hosted
     steps:
       # Deliberately NOT actions/checkout — that would check the repo out
@@ -98,8 +105,16 @@ jobs:
       - name: Sync /opt/docker-data/source-code/as_infra to origin/main
         run: |
           cd /opt/docker-data/source-code/as_infra
-          git fetch origin main
-          git reset --hard origin/main
+          # Fetch via an explicit token-authenticated HTTPS URL rather than
+          # trusting whatever 'origin' is already configured to (SSH,
+          # stored HTTPS credentials, etc.) — this was failing with "Host
+          # key verification failed" because the manual clone's remote was
+          # SSH and the runner's serveradmin user has neither a known_hosts
+          # entry for github.com nor an SSH key set up. GITHUB_TOKEN is
+          # already scoped to this repo (contents: read, set at workflow
+          # level) and is ephemeral — nothing persists after the job ends.
+          git fetch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/techcoderlab/as_infra.git" main
+          git reset --hard FETCH_HEAD
           git clean -fd -e infra/.env   # drop any stray untracked files, but never touch the real .env
 
       - name: Log in to GHCR
