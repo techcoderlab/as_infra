@@ -163,10 +163,17 @@ jobs:
           chmod 600 .env
 
       - name: Ensure host bind-mount directories exist
+        # No sudo here on purpose — it fails non-interactively (no TTY,
+        # no password) on a self-hosted runner. serveradmin already owns
+        # /opt/docker-data/app-data/as_infra from the one-time setup in
+        # docs/Deployment-Operations-Checklist.md §0, and the runner
+        # itself runs as serveradmin, so plain mkdir is enough. If this
+        # ever fails with a permission error instead, it means that
+        # one-time chown was never done — fix it once, manually:
+        #   sudo chown -R serveradmin:serveradmin /opt/docker-data/app-data/as_infra
         run: |
-          sudo mkdir -p /opt/docker-data/app-data/as_infra/{postgres,redis,tools/logs}
-          sudo mkdir -p /opt/docker-data/app-data/as_infra/laravel/storage/{app,logs}
-          sudo chown -R "$(id -u):$(id -g)" /opt/docker-data/app-data/as_infra
+          mkdir -p /opt/docker-data/app-data/as_infra/{postgres,redis,tools/logs}
+          mkdir -p /opt/docker-data/app-data/as_infra/laravel/storage/{app,logs}
 
       - name: Pull new images
         working-directory: /opt/docker-data/source-code/as_infra/infra
