@@ -39,6 +39,14 @@ class Settings(BaseSettings):
         validation_alias="LARAVEL_APP_SECRET"
     )
 
+    MCP_SIDECARD_CLIENT_APP_ID: str = Field(
+        default="", 
+        validation_alias="MCP_SIDECARD_CLIENT_APP_ID"
+    )
+    MCP_SIDECARD_CLIENT_SECRET: str = Field(
+        default="", 
+        validation_alias="MCP_SIDECARD_CLIENT_SECRET"
+    )
 
     # Maps env var "APP_URL" -> Class var "AS_API_BASE"
     AS_API_BASE: str = Field(

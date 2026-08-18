@@ -113,95 +113,95 @@ class LeadWorkflowResultHandler implements WorkflowResultHandler
         LeadActivity::insert([$activity]);
 
 
-        $form = $target->form;
-        if ($form) {
-            // Trigger the discord webhook if the form is a public form
+        // $form = $target->form;
+        // if ($form) {
+        //     // Trigger the discord webhook if the form is a public form
 
-            $str = '';
-            foreach ($target->payload ?? [] as $k => $v) {
-                $lbl = ucwords(str_replace(['_', '-'], ' ', $k));
-                $val = is_string($v) || is_numeric($v) ? $v : json_encode($v);
-                $str .= "**$lbl:** $val\n";
-            }
-            $formattedPayload = substr(trim($str) ?: '*No data*', 0, 1024);
-
-
-            $event = 'form.submission';
-            $form->triggerWebhooks($event, [
-                'embeds' => [
-                    [
-                        'title' => 'New Solar Lead Captured - SUNSTATESOLAR',
-                        'color' => 3066993, // A nice green/teal hex code in decimal
-                        'timestamp' => $target->created_at->toIso8601String(),
-                        'fields' => [
-                            [
-                                'name' => '📋 Form Data',
-                                'value' => $formattedPayload,
-                                'inline' => false
-                            ],
-                            [
-                                'name' => '🧠 AI Analysis',
-                                'value' => $neededData->except('reasoning')
-                                    ->map(fn($v, $k) => ucfirst(str_replace('_', ' ', $k)) . ": $v")
-                                    ->implode(PHP_EOL),
-                                'inline' => false
-                            ]
-                        ],
-                        'footer' => [
-                            'text' => 'From Blue Rio Systems - AI Lead Bot'
-                        ]
-                    ]
-                ]
-            ]);
+        //     $str = '';
+        //     foreach ($target->payload ?? [] as $k => $v) {
+        //         $lbl = ucwords(str_replace(['_', '-'], ' ', $k));
+        //         $val = is_string($v) || is_numeric($v) ? $v : json_encode($v);
+        //         $str .= "**$lbl:** $val\n";
+        //     }
+        //     $formattedPayload = substr(trim($str) ?: '*No data*', 0, 1024);
 
 
-            // $webhooks = Cache::remember(
-            //     "form:webhooks:{$form->getKey()}",
-            //     now()->addMinutes(5),
-            //     fn () => $form->webhooks()
-            //         ->where('is_active', true)
-            //         ->whereJsonContains('events', 'form.submission')
-            //         ->get()
-            // );
-            // if ($webhooks->isNotEmpty()) {
+        //     $event = 'form.submission';
+        //     $form->triggerWebhooks($event, [
+        //         'embeds' => [
+        //             [
+        //                 'title' => 'New Solar Lead Captured - SUNSTATESOLAR',
+        //                 'color' => 3066993, // A nice green/teal hex code in decimal
+        //                 'timestamp' => $target->created_at->toIso8601String(),
+        //                 'fields' => [
+        //                     [
+        //                         'name' => '📋 Form Data',
+        //                         'value' => $formattedPayload,
+        //                         'inline' => false
+        //                     ],
+        //                     [
+        //                         'name' => '🧠 AI Analysis',
+        //                         'value' => $neededData->except('reasoning')
+        //                             ->map(fn($v, $k) => ucfirst(str_replace('_', ' ', $k)) . ": $v")
+        //                             ->implode(PHP_EOL),
+        //                         'inline' => false
+        //                     ]
+        //                 ],
+        //                 'footer' => [
+        //                     'text' => 'From Blue Rio Systems - AI Lead Bot'
+        //                 ]
+        //             ]
+        //         ]
+        //     ]);
 
-            //     $str = '';
-            //     foreach ($target->payload ?? [] as $k => $v) {
-            //         $lbl = ucwords(str_replace(['_', '-'], ' ', $k));
-            //         $val = is_string($v) || is_numeric($v) ? $v : json_encode($v);
-            //         $str .= "**$lbl:** $val\n";
-            //     }
-            //     $formattedPayload = substr(trim($str) ?: '*No data*', 0, 1024);
 
-            //     DispatchWebhookBatchJob::dispatch(
-            //         data: [
-            //             'embeds' => [
-            //                 [
-            //                     'title' => 'New Solar Lead Captured - SUNSTATESOLAR',
-            //                     'color' => 3066993, // A nice green/teal hex code in decimal
-            //                     'timestamp' => $target->created_at->toIso8601String(),
-            //                     'fields' => [
-            //                         [
-            //                             'name' => '📋 Form Data',
-            //                             'value' => $formattedPayload,
-            //                             'inline' => false
-            //                         ],
-            //                         [
-            //                             'name' => '🧠 AI Analysis',
-            //                             'value' => $details,
-            //                             'inline' => false
-            //                         ]
-            //                     ],
-            //                     'footer' => [
-            //                         'text' => 'From Blue Rio Systems - AI Lead Bot'
-            //                     ]
-            //                 ]
-            //             ]
-            //         ],
-            //         webhooks: $webhooks,
-            //         event: 'form.submission'
-            //     );
-            // }
-        }
+        //     // $webhooks = Cache::remember(
+        //     //     "form:webhooks:{$form->getKey()}",
+        //     //     now()->addMinutes(5),
+        //     //     fn () => $form->webhooks()
+        //     //         ->where('is_active', true)
+        //     //         ->whereJsonContains('events', 'form.submission')
+        //     //         ->get()
+        //     // );
+        //     // if ($webhooks->isNotEmpty()) {
+
+        //     //     $str = '';
+        //     //     foreach ($target->payload ?? [] as $k => $v) {
+        //     //         $lbl = ucwords(str_replace(['_', '-'], ' ', $k));
+        //     //         $val = is_string($v) || is_numeric($v) ? $v : json_encode($v);
+        //     //         $str .= "**$lbl:** $val\n";
+        //     //     }
+        //     //     $formattedPayload = substr(trim($str) ?: '*No data*', 0, 1024);
+
+        //     //     DispatchWebhookBatchJob::dispatch(
+        //     //         data: [
+        //     //             'embeds' => [
+        //     //                 [
+        //     //                     'title' => 'New Solar Lead Captured - SUNSTATESOLAR',
+        //     //                     'color' => 3066993, // A nice green/teal hex code in decimal
+        //     //                     'timestamp' => $target->created_at->toIso8601String(),
+        //     //                     'fields' => [
+        //     //                         [
+        //     //                             'name' => '📋 Form Data',
+        //     //                             'value' => $formattedPayload,
+        //     //                             'inline' => false
+        //     //                         ],
+        //     //                         [
+        //     //                             'name' => '🧠 AI Analysis',
+        //     //                             'value' => $details,
+        //     //                             'inline' => false
+        //     //                         ]
+        //     //                     ],
+        //     //                     'footer' => [
+        //     //                         'text' => 'From Blue Rio Systems - AI Lead Bot'
+        //     //                     ]
+        //     //                 ]
+        //     //             ]
+        //     //         ],
+        //     //         webhooks: $webhooks,
+        //     //         event: 'form.submission'
+        //     //     );
+        //     // }
+        // }
     }
 }

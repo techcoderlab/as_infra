@@ -108,6 +108,8 @@ from cryptography.exceptions import InvalidSignature
 
 
 
+from core.logger import mcp_logger
+
 # Initialize a global Redis connection pool
 redis_client = aioredis.from_url(
     f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", 
@@ -126,27 +128,39 @@ async def verify_hmac_signature(request: Request):
     
     # 1. Require all three headers now
     if not app_id or not signature or not timestamp:
+        mcp_logger.warning(f"[verify_hmac_signature] Missing auth headers: X-App-Id={app_id}, X-Signature={'present' if signature else 'missing'}, X-Timestamp={timestamp}")
         raise HTTPException(status_code=401, detail="Missing authentication headers (X-App-Id, X-Signature, X-Timestamp)")
 
     # 2. Prevent Replay Attacks (60-second window)
     try:
         request_time = float(timestamp)
     except ValueError:
+        mcp_logger.warning(f"[verify_hmac_signature] Invalid timestamp format: {timestamp}")
         raise HTTPException(status_code=401, detail="Invalid timestamp format")
 
     if abs(time.time() - request_time) > 60:
+        mcp_logger.warning(f"[verify_hmac_signature] Request expired. Server time={time.time()}, Request time={request_time}")
         raise HTTPException(status_code=401, detail="Request expired (clock drift or replay)")
 
     # 3. Dynamically fetch the Secret from Redis using the App ID
-    # This takes <1ms and avoids a heavy PostgreSQL database query
+    developer_secret = None
     try:
+        # Check standard Laravel prefixed key
         developer_secret = await redis_client.get(f"agency-saas-api-database-apikey:{app_id}")
+        
+        # Check unprefixed key fallback
+        if not developer_secret:
+            developer_secret = await redis_client.get(f"apikey:{app_id}")
     except Exception as e:
-        import logging
-        logging.error(f"[verify_hmac_signature] Redis fetch failed: {e}")
+        mcp_logger.error(f"[verify_hmac_signature] Redis fetch failed: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable (auth layer)")
     
+    # Fallback to configured MCP_SIDECARD_CLIENT from environment (handles missing local Redis keys)
+    if not developer_secret and settings.MCP_SIDECARD_CLIENT_APP_ID and app_id == settings.MCP_SIDECARD_CLIENT_APP_ID:
+        developer_secret = settings.MCP_SIDECARD_CLIENT_SECRET
+
     if not developer_secret:
+        mcp_logger.warning(f"[verify_hmac_signature] Invalid X-App-Id or key not found in Redis: app_id={app_id}")
         raise HTTPException(status_code=401, detail="Invalid X-App-Id or key has been revoked")
 
     # 4. Verify HMAC Signature
@@ -165,6 +179,7 @@ async def verify_hmac_signature(request: Request):
 
     # Constant-time comparison
     if not hmac.compare_digest(expected_signature, signature):
+        mcp_logger.warning(f"[verify_hmac_signature] Signature mismatch for app_id={app_id}. Expected: {expected_signature[:10]}... Got: {signature[:10]}...")
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     # Optional: Attach the app_id to the request state so your routes 

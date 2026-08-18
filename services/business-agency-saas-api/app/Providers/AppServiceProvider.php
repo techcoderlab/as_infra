@@ -46,19 +46,16 @@ class AppServiceProvider extends ServiceProvider
 
         Lead::observe(LeadObserver::class);
 
-        Event::listen(
-            [
-                \App\Events\LeadCreated::class,
-                \App\Events\WhatsAppMessageReceived::class,
-            ],
-            \App\Listeners\AgentTriggerListener::class
-        );
+        // Replace the manual Event::listen(...) with this single line:
         // Event::listen(
         //     [
-        //         \App\Events\WhatsAppMessageReceived::class
+        //         \App\Events\LeadCreated::class,
+        //         \App\Events\WhatsAppMessageReceived::class,
         //     ],
-        //     \App\Listeners\AgentTriggerMessageReceivedListener::class
+        //     \App\Listeners\AgentTriggerListener::class
         // );
+        Event::subscribe(\App\Listeners\AgentEventSubscriber::class);
+
 
         // RateLimiter::for(config('services.mcp_sidecar.calling_api_name'), function (int $tenantId) {
         //     // Limit to 10 agents per minute per tenant.

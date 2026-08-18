@@ -3,10 +3,11 @@
 namespace App\Events;
 
 use App\Models\Lead;
+use App\Contracts\Events\ShouldTriggerAgent;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class LeadCreated
+class LeadCreated implements ShouldTriggerAgent
 {
     use Dispatchable, SerializesModels;
 
@@ -15,4 +16,8 @@ class LeadCreated
      */
     public function __construct(public Lead $model) {}
 
+    public function getTargetModel(): Lead
+    {
+        return $this->model;
+    }
 }
