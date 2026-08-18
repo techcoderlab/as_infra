@@ -84,7 +84,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
     protected function _sendRequest(array $payload)
     {
         if (!$this->integration) {
-            Log::error("[WhatsAppService]: No active integration for tenant {$this->tenantId}");
+            Log::error("[WhatsAppServiceNative]: No active integration for tenant {$this->tenantId}");
 
             return false;
         }
@@ -94,7 +94,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
         $accessToken = $config['api_key'] ?? null;
 
         if (!$phoneNumberId || !$accessToken) {
-            Log::error("[WhatsAppService]: Missing config for tenant {$this->tenantId}");
+            Log::error("[WhatsAppServiceNative]: Missing config for tenant {$this->tenantId}");
 
             return false;
         }
@@ -106,7 +106,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
 
         if (RateLimiter::tooManyAttempts($limitKey, $this->limit)) {
             $seconds = RateLimiter::availableIn($limitKey);
-            Log::warning("[WhatsAppService]: Rate limit hit for {$phoneNumberId}. Smoothing burst, waiting {$seconds}s");
+            Log::warning("[WhatsAppServiceNative]: Rate limit hit for {$phoneNumberId}. Smoothing burst, waiting {$seconds}s");
 
             // If we are in a high-volume scenario, we might want to sleep or just fail and let the queue retry.
             // For robustness, we'll wait briefly if it's small, otherwise we'll log and return false.
@@ -127,7 +127,7 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
         }
 
         try {
-            Log::info("[WhatsAppService]: Sending message to {$payload['to']} via {$phoneNumberId}");
+            Log::info("[WhatsAppServiceNative]: Sending message to {$payload['to']} via {$phoneNumberId}");
 
             // Use sync call by default for better error handling in high-volume queue contexts.
             // If async is truly needed, it should be handled by Laravel Queues.
@@ -141,14 +141,14 @@ class WhatsAppServiceNative extends AbstractMessagingService implements Messagin
             }
 
             $error = $response->json()['error']['message'] ?? 'Unknown Meta API error';
-            Log::error("[WhatsAppService]: Meta API Failed for {$phoneNumberId}: {$error}", [
+            Log::error("[WhatsAppServiceNative]: Meta API Failed for {$phoneNumberId}: {$error}", [
                 'status' => $response->status(),
                 'response' => $response->json(),
             ]);
 
             return false;
         } catch (\Exception $e) {
-            Log::error('[WhatsAppService]: Exception sending message: ' . $e->getMessage());
+            Log::error('[WhatsAppServiceNative]: Exception sending message: ' . $e->getMessage());
 
             return false;
         }

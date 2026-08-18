@@ -50,12 +50,11 @@ class LeadMessageResultHandler implements WorkflowResultHandler
 
             // 3. Send WhatsApp Message
             // We use our dedicated WhatsAppService
-            $waService = new \App\Services\WhatsAppServiceNative($target->tenant_id);
+            // $waService = new \App\Services\WhatsAppServiceNative($target->tenant_id);
 
             // Use phone from payload, fallback to target phone
             $recipientPhone = $target->payload['recipient_phone'] ?? $target->payload['phone'];
             if ($recipientPhone) {
-
                 // Check if Session exists
                 $session = \App\Models\LeadChatSession::where('lead_id', $target->getKey())->first();
                 if (!$session) {
@@ -64,8 +63,11 @@ class LeadMessageResultHandler implements WorkflowResultHandler
                     return;
                 }
 
+                // Fully decoupled code (Optimized)
+                $provider = \App\Services\Messaging\MessagingServiceFactory::make($session->platform, $target->tenant_id);
+                
                 // Send standard text
-                $waService->sendMessage($recipientPhone, $responseText);
+                $provider->sendMessage($recipientPhone, $responseText);
 
                 // Update Session
                 $now = now();

@@ -19,10 +19,11 @@ class MessagingServiceFactory
     public static function make(string $type, int $tenantId): MessagingProviderInterface
     {
         return match ($type) {
-            'whatsapp_native' => new WhatsAppServiceNative($tenantId),
-            'whatsapp' => new WhatsAppService($tenantId),
-            // 'telegram' => new TelegramService($tenantId),
-            default => throw new Exception("Unsupported messaging service type: {$type}"),
+            'whatsapp' => new WhatsAppServiceNative($tenantId),
+            // 'whatsapp' => new WhatsAppService($tenantId),
+            // 'telegram' => new TelegramServiceNative($tenantId), // Future
+            // 'slack' => new SlackServiceNative($tenantId),    // Future
+            default => throw new Exception("Unsupported messaging platform: {$type}"),
         };
     }
 }
