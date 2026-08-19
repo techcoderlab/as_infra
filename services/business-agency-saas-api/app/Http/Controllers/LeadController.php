@@ -32,7 +32,8 @@ class LeadController extends Controller
 
         $settings = TenantSetting::where('tenant_id', $tenantId)->first();
 
-        return $settings->crm_config ?? [
+        // ADDED '?->' here to prevent the 500 error when settings are null
+        return $settings?->crm_config ?? [
             'entity_name_singular' => 'Lead',
             'entity_name_plural' => 'Leads',
             'statuses' => [
@@ -58,31 +59,45 @@ class LeadController extends Controller
      */
     public function stats(Request $request)
     {
-
         // 3-Layer Check via Policy
         $this->authorize('viewAny', Lead::class);
         $tenantId = $request->user()->current_tenant_id;
 
         $cacheKey = "dashboard_stats_{$tenantId}";
+
+        // ADD THIS: Force clear the backend cache if the Sync button was clicked
+        if ($request->query('refresh') === 'true') {
+            Cache::forget($cacheKey);
+            Cache::forget("{$cacheKey}_last_updated");
+        }
+
         $data = Cache::get($cacheKey);
-        
-        // Background cache refresh logic
+
+        // Background cache refresh logic (Only runs if we already have old data to display)
         $lastUpdated = Cache::get("{$cacheKey}_last_updated", 0);
-        if (time() - $lastUpdated > 120) {
+        if ($data && (time() - $lastUpdated > 120)) {
             \App\Jobs\CalculateTenantStatsJob::dispatch($tenantId);
             // Bump the timestamp so we don't dispatch it multiple times while it's processing
             Cache::put("{$cacheKey}_last_updated", time(), 300);
         }
 
+        // FIX: If data is completely missing (first load), calculate it NOW instead of backgrounding it
         if (!$data) {
-            // Default empty state while generating
-            $data = [
-                'overview' => ['total_leads' => 0, 'new_leads' => 0, 'hot_leads' => 0, 'conversion_rate' => 0, 'stale_leads' => 0],
-                'growth' => ['this_month' => 0, 'last_month' => 0, 'percentage' => 0],
-                'chart_data' => [],
-                'top_sources' => [],
-                'leads_search_filters' => ['temperatures' => [], 'sources' => []],
-            ];
+            \App\Jobs\CalculateTenantStatsJob::dispatchSync($tenantId); // Forces immediate execution
+            $data = Cache::get($cacheKey); // Fetch the freshly generated data
+
+            Log::info("Dashboard Stats Generated Synchronously: " . json_encode($data, JSON_PRETTY_PRINT));
+
+            // Absolute fallback (just in case the job somehow fails or there are 0 leads in the DB)
+            if (!$data) {
+                $data = [
+                    'overview' => ['total_leads' => 0, 'new_leads' => 0, 'hot_leads' => 0, 'conversion_rate' => 0, 'stale_leads' => 0],
+                    'growth' => ['this_month' => 0, 'last_month' => 0, 'percentage' => 0],
+                    'chart_data' => [],
+                    'top_sources' => [],
+                    'leads_search_filters' => ['temperatures' => [], 'sources' => []],
+                ];
+            }
         }
 
         return response()->json([
@@ -202,9 +217,11 @@ class LeadController extends Controller
 
         return $query
             // Eager load only necessary columns from relations to save RAM
-            ->with(['form' => function ($q) {
-                $q->select('id', 'name');
-            }])
+            ->with([
+                'form' => function ($q) {
+                    $q->select('id', 'name');
+                }
+            ])
             // Order by ID Desc is faster than CreatedAt because it's the Primary Key index
             ->orderByDesc('id')
             // Use simplePaginate if you have 100k+ rows to avoid 'count(*)' overhead
@@ -402,7 +419,7 @@ class LeadController extends Controller
                 // 4. Prepare Activity Data
                 // $currentTokenString = request()->user()->loggedInFromString();
                 // $activityNote = ucfirst(str_replace('_', ' ', $activityType)) . " a lead, using " . strtoupper($insertMethod) . " upload.";
-                $activityNote = 'Inserted a lead, using '.strtoupper($insertMethod).' upload.';
+                $activityNote = 'Inserted a lead, using ' . strtoupper($insertMethod) . ' upload.';
                 $activitiesToInsert = [];
                 foreach ($insertedLeadIds as $leadId) {
                     $activitiesToInsert[] = [
@@ -415,7 +432,7 @@ class LeadController extends Controller
                 }
 
                 // 5. Bulk Insert Activities
-                if (! empty($activitiesToInsert)) {
+                if (!empty($activitiesToInsert)) {
                     DB::table('lead_activities')->insert($activitiesToInsert);
                 }
 
@@ -424,7 +441,7 @@ class LeadController extends Controller
             } catch (\Exception $e) {
                 DB::rollBack();
                 // Log the error but continue or rethrow based on your agency's policy
-                Log::error('Batch Insert Failed: '.$e->getMessage());
+                Log::error('Batch Insert Failed: ' . $e->getMessage());
                 throw $e;
             }
         }
@@ -490,7 +507,7 @@ class LeadController extends Controller
         $handle = fopen($file->getPathname(), 'r');
         $header = fgetcsv($handle); // Consume and skip header row
 
-        if (! $header) {
+        if (!$header) {
             fclose($handle);
 
             return response()->json(['message' => 'Empty file'], 400);
@@ -546,7 +563,7 @@ class LeadController extends Controller
         // We use a separate query to get only the payloads to save RAM.
         // LIMIT discovery to the latest 1000 leads to avoid catastrophic full table scans.
         $query = Lead::where('tenant_id', $tenantId);
-        if (! empty($selectedIds)) {
+        if (!empty($selectedIds)) {
             $query->whereIn('id', $selectedIds);
         } else {
             $query->latest('id')->limit(1000);
@@ -563,7 +580,7 @@ class LeadController extends Controller
         $dynamicHeaders = array_keys($allKeys);
 
         // 2. STREAMING PHASE
-        $fileName = 'leads_export_'.now()->format('Y-m-d_H-i').'.csv';
+        $fileName = 'leads_export_' . now()->format('Y-m-d_H-i') . '.csv';
         $headers = [
             'Content-type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=$fileName",
@@ -581,7 +598,7 @@ class LeadController extends Controller
 
             // Fetch data again for the actual export
             $exportQuery = Lead::where('tenant_id', $tenantId);
-            if (! empty($selectedIds)) {
+            if (!empty($selectedIds)) {
                 $exportQuery->whereIn('id', $selectedIds);
             }
 

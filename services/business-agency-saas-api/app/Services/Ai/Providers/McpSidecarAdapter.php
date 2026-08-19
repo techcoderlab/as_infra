@@ -80,6 +80,8 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             'use_stream' => $this->supportsStreaming(),
 
+            'max_iterations' => $payload->context['agent_config']['provider'] == 'cloudflare' ? 15 : 7,
+
         ];
 
         // if chat_session_data exists in $data['context'] remove it

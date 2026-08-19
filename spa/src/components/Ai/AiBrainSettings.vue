@@ -100,7 +100,7 @@ const fetchStats = async () => {
 const saveSettings = async () => {
   try {
     await request.post('/ai-agent/settings', form.value)
-    console.log('AI settings saved')
+    // console.log('AI settings saved')
     fetchStats()
   } catch (e) {
     alert('Failed to save settings')

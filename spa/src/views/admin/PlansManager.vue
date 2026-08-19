@@ -108,7 +108,7 @@ const savePlan = async () => {
         limit: parseInt(config.limit),
       }))
 
-      console.log(form.value.price);
+      // console.log(form.value.price);
     const payload = {
       name: form.value.name,
       slug: form.value.slug,

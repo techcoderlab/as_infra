@@ -316,7 +316,7 @@ const chatHandler = async (body, signals) => {
           // console.log('Stream Finished', finalString)
           signals.onClose()
           signals.onResponse({ text: extractJsonValue(finalString) })
-          console.log(finalString)
+          // console.log(finalString)
           return
         }
 

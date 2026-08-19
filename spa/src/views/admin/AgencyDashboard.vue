@@ -49,25 +49,25 @@ const chartSeries = computed(() => [
 
 const { fetchDataWithCache } = useApiCache()
 
-const fetchDashboard = async (event) => {
-  let refresh = false
-  const ttl = 20000 // 10 seconds
-  if (event?.target?.value?.toLowerCase().trim() === 'sync') {
+// Replace your fetchDashboard function with this:
+const fetchDashboard = async (forceSync = false) => {
+  let refresh = forceSync === true
+  const ttl = 20000 // 20 seconds
+  
+  if (refresh) {
     console.log('Syncing dashboard data')
-    refresh = true
   }
 
   loading.value = true
   try {
-    // const res = await api.get('/leads/stats')
-    // stats.value = res.data.stats
-
     const result = await fetchDataWithCache(
       'agency_dashboard_stats',
-      () => Promise.all([api.get('/leads/stats')]),
+      // Pass the refresh parameter to the backend
+      () => Promise.all([api.get(`/leads/stats${refresh ? '?refresh=true' : ''}`)]),
       ttl,
       refresh,
     )
+    
     const { data } = result[0]
 
     if (data) {
@@ -103,7 +103,7 @@ onUnmounted(() => {
         </p>
       </div>
       <button
-        @click="fetchDashboard"
+        @click="fetchDashboard(true)"
         value="sync"
         class="flex items-center gap-2 px-4 py-2 btn-primary border border-slate-200 dark:border-slate-800 rounded-lg text-sm font-semibold hover:shadow-lg transition-all"
       >

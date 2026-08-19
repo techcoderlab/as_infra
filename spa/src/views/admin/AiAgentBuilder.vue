@@ -44,7 +44,7 @@ const fetchData = async () => {
       api.get('/ai-agents'),
       api.get('/integrations/available'),
     ])
-    console.log(agentsRes)
+    // console.log(agentsRes)
     agents.value = agentsRes.data.agents || []
     availableTriggers.value = agentsRes.data.availableTriggers || []
     availableTools.value = agentsRes.data.availableAiTools || []

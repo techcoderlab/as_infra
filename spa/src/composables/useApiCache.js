@@ -27,10 +27,10 @@ export function useApiCache() {
         const isCacheValid = now.getTime() - cachedItem.timestamp < ttl
 
         if (isCacheValid) {
-          console.log(`[${cacheKey}] Using valid cached data.`)
+          // console.log(`[${cacheKey}] Using valid cached data.`)
           return cachedItem.data // Return cached data immediately
         } else {
-          console.log(`[${cacheKey}] Cache expired. Fetching new data.`)
+          // console.log(`[${cacheKey}] Cache expired. Fetching new data.`)
           localStorage.removeItem(cacheKey)
         }
       } catch (e) {

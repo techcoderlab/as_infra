@@ -16,7 +16,8 @@ class CalculateTenantStatsJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public function __construct(public string $tenantId)
-    {}
+    {
+    }
 
     public function handle(): void
     {
@@ -25,12 +26,12 @@ class CalculateTenantStatsJob implements ShouldQueue
         $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
         $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
 
-        $aggregates = Lead::where('tenant_id', $this->tenantId)
+        $aggregates = Lead::withoutGlobalScopes()->where('tenant_id', $this->tenantId)
             ->selectRaw('count(*) as total')
             ->selectRaw("count(*) FILTER (WHERE status = 'new') as new_leads")
             ->selectRaw("count(*) FILTER (WHERE status = 'closed' and won = true) as closed_leads")
             ->selectRaw("count(*) FILTER (WHERE temperature = 'hot') as hot_leads")
-            ->selectRaw("count(*) FILTER (WHERE status = 'new' AND created_at < ?) as stale_leads", [$now->subDay()])
+            ->selectRaw("count(*) FILTER (WHERE status = 'new' AND created_at < ?) as stale_leads", [$now->copy()->subDay()])
             ->selectRaw('count(*) FILTER (WHERE created_at >= ?) as this_month_leads', [$startOfMonth])
             ->selectRaw('count(*) FILTER (WHERE created_at >= ? AND created_at <= ?) as last_month_leads', [$startOfLastMonth, $endOfLastMonth])
             ->first();
@@ -41,7 +42,7 @@ class CalculateTenantStatsJob implements ShouldQueue
             ->groupByRaw('created_at::date')
             ->orderBy('date')
             ->get()
-            ->mapWithKeys(fn ($item) => [$item->date => $item->count]);
+            ->mapWithKeys(fn($item) => [$item->date => $item->count]);
 
         $chartData = [];
         for ($i = 6; $i >= 0; $i--) {

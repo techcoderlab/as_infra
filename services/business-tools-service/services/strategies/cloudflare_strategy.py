@@ -5,8 +5,8 @@
 # Pillar   : P1 Architecture, P2 Security, P3 Performance, P4 Reliability,
 #            P5 Observability, P6 Maintainability, P7 Scalability, P8 Code Quality
 #
-# Purpose  : Integrates Cloudflare Workers AI open-source models (Kimi K2,
-#            Llama 4, Granite 4, etc.) as a first-class provider in the sidecar.
+# Purpose  : Integrates Cloudflare Workers AI models (e.g. Llama 3.1, 3.3) as a
+#            first-class provider in the sidecar.
 #            Uses the OpenAI-compatible endpoint so it slots into the EXISTING
 #            multi-turn tool-calling loop with zero changes to AgentService.
 #
@@ -40,28 +40,16 @@ from services.strategies.base import LLMStrategy
 
 CF_BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
 
-# Recommended flagship open-source tool-calling models on Workers AI (June 2026).
-# Ordered by capability tier — use as the `model` field in agent config.
+# Recommended flagship open-source tool-calling models natively supported on Workers AI.
+# These models are explicitly verified to support the `--enable-auto-tool-choice` vLLM backend.
 RECOMMENDED_MODELS = {
-    # Tier 1 — Frontier (best reasoning + tool calling, higher latency/cost)
-    "kimi-k2":        "@cf/moonshotai/kimi-k2.6",     # 1T params, 262k ctx, multi-turn tools
-    "kimi-k2-latest": "@cf/moonshotai/kimi-k2.7",     # Latest Kimi K2 checkpoint
-    "llama-4-scout":  "@cf/meta/llama-4-scout",        # 17B MoE, multimodal, fast
-    "gpt-oss-120b":   "@cf/openai/gpt-oss-120b",       # OpenAI open-weight, high reasoning
-
-    # Tier 2 — Balanced (good tool calling, lower latency)
-
-    "gemma-4-26b":    "@cf/google/gemma-4-26b-a4b-it", # latest
-    "granite-4":      "@cf/ibm-granite/granite-4.0-h-micro",  # Strong function calling, RAG
-    "gpt-oss-20b":    "@cf/openai/gpt-oss-20b",        # Lighter OpenAI open-weight
-    "glm-4-flash":    "@cf/zai-org/glm-4.7-flash",       # Ultra-fast, 131k ctx, multilingual
-
-    # Tier 3 — Speed-optimised (sub-100ms first-token, good for chat widgets)
-    "llama-3.1-8b":   "@cf/meta/llama-3.1-8b-instruct-fp8",  # Battle-tested baseline
-    "hermes-7b":      "@cf/mistral/mistral-7b-instruct-v0.2-lora",  # Excellent tool-calling 7B
+    "llama-3.1-8b":  "@cf/meta/llama-3.1-8b-instruct-fp8",       # Best overall: Fast, reliable native tool-calling
+    "llama-3.1-70b": "@cf/meta/llama-3.1-70b-instruct",          # High reasoning capacity
+    "llama-3.3-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", # Latest fast frontier model
+    "hermes-2-pro":  "@cf/nousresearch/hermes-2-pro-mistral-7b", # Mistral explicitly fine-tuned for tool calling
 }
 
-DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"   # Best free open-source for agentic tool-calling
+DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
 
 # ─── Circuit Breaker ──────────────────────────────────────────────────────────
 
@@ -263,6 +251,13 @@ class CloudflareStrategy(LLMStrategy):
                     status = exc.response.status_code
                     body_text = exc.response.text
                     mcp_logger.error(f"CF HTTP {status} error body: {body_text}")
+                    
+                    # Fallback for unsupported/paid models
+                    if status in (400, 403, 404) and resolved_model != DEFAULT_MODEL:
+                        mcp_logger.warning(f"CF model {resolved_model} rejected ({status}). Falling back to {DEFAULT_MODEL}")
+                        resolved_model = DEFAULT_MODEL
+                        continue # Retry immediately with default model
+                        
                     if status not in self._RETRYABLE_STATUS or attempt == self._MAX_RETRIES:
                         await breaker.on_failure(exc)
                         yield {"type": "error", "data": f"Cloudflare API error {status}: {body_text}"}
@@ -410,7 +405,6 @@ class CloudflareStrategy(LLMStrategy):
 
         if tools:
             payload["tools"]       = tools
-            payload["tool_choice"] = "auto"
 
         if output_format == "json" and not tools:
             payload["response_format"] = {"type": "json_object"}
@@ -425,7 +419,7 @@ class CloudflareStrategy(LLMStrategy):
             "Accept": "text/event-stream" if use_stream else "application/json",
             "Authorization": f"Bearer {cf_token}",
             "Content-Type":  "application/json",
-            "User-Agent":    "agency-saas-sidecar/1.0",
+            "User-Agent":    "Mozilla/5.0 (compatible; AgencySaasSidecar/1.0)",
         }
 
         async with get_client().stream(
@@ -435,6 +429,8 @@ class CloudflareStrategy(LLMStrategy):
             headers  = headers,
             timeout  = 120.0,
         ) as response:
+            if response.status_code >= 400:
+                await response.aread()
             response.raise_for_status()
 
             if not use_stream:

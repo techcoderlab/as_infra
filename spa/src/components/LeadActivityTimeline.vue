@@ -104,7 +104,7 @@ const startPolling = async () => {
         attempts !== lastSnapshot.attempts ||
         completed_at !== lastSnapshot.completed_at
 
-      console.log('interval:', pollInterval, 'changed:', hasChanged)
+      // console.log('interval:', pollInterval, 'changed:', hasChanged)
 
       // Sync local state
       aiJob.value.status = status
