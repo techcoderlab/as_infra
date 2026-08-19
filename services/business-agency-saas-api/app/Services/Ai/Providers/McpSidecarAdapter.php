@@ -175,7 +175,20 @@ class McpSidecarAdapter implements LlmProviderInterface
          * wait(true) tells Guzzle: "Wait for the request, and THROW an exception if it fails
          * so the Laravel Queue can retry it."
          */
-        $promise->wait(true);
+        try {
+            $promise->wait(true);
+        } catch (\Throwable $e) {
+            $message = "Sidecar connection failed: " . $e->getMessage();
+            
+            if (method_exists($e, 'getResponse') && $e->getResponse()) {
+                $responseBody = $e->getResponse()->getBody()->getContents();
+                if (!empty($responseBody)) {
+                    $message .= " | Response: " . Str::limit($responseBody, 300);
+                }
+            }
+
+            throw new \App\Exceptions\SidecarUnreachableException($message, $e->getCode(), $e);
+        }
 
         Log::info("[AI ADAPTER]: AI Job {$jobUuid} enqueued successfully");
 

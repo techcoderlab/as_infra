@@ -46,8 +46,8 @@ class AiJob extends Model
     public function getFriendlyStatusAttribute()
     {
         return match ($this->status) {
-            'pending' => 'Preparing workspace...',
-            'processing' => 'Agent is thinking and using tools...',
+            'pending' => 'Please wait! AI is processing',
+            // 'processing' => 'Agent is thinking and using tools...',
             'completed' => 'Task finished successfully.',
             'failed' => 'Something went wrong.',
             default => 'Unknown state'

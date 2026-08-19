@@ -12,6 +12,7 @@ const props = defineProps({
 const activities = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
+const retrying = ref(false)
 const page = ref(1)
 const hasMore = ref(false)
 
@@ -104,7 +105,7 @@ const startPolling = async () => {
         attempts !== lastSnapshot.attempts ||
         completed_at !== lastSnapshot.completed_at
 
-      // console.log('interval:', pollInterval, 'changed:', hasChanged)
+      console.log('interval:', pollInterval, 'changed:', hasChanged)
 
       // Sync local state
       aiJob.value.status = status
@@ -145,6 +146,25 @@ const startPolling = async () => {
   }
 
   runPoll()
+}
+
+const retryAiJob = async () => {
+  if (retrying.value || aiJob.value?.status !== 'failed') return
+  
+  retrying.value = true
+  try {
+    await api.post(`/ai-jobs/${props.leadId}/retry`)
+    
+    // Optimistically update the status to processing so UI reflects immediately
+    aiJob.value.status = 'pending'
+    
+    // Restart polling if it's not already running
+    // startPolling()
+  } catch (e) {
+    console.error('Failed to retry AI job', e)
+  } finally {
+    retrying.value = false
+  }
 }
 
 onMounted(() => {
@@ -289,30 +309,52 @@ onMounted(fetchActivities)
 
 <template>
   <div class="space-y-6">
+    <!-- AI Status Banner -->
     <div
-      v-if="aiJob?.status === 'pending'"
-      class="text-blue-500 dark:text-blue-400 rounded-lg py-2"
+      v-if="aiJob?.status === 'pending' || aiJob?.status === 'processing'"
+      class="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl shadow-sm transition-all"
     >
-      Please wait, AI is processing this
-      {{ props?.crmConfig?.entity_name_singular.toLowerCase() }}...
+      <div class="relative flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/50 text-blue-600 dark:text-blue-400 flex-shrink-0">
+        <svg class="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="ICONS.brain" />
+        </svg>
+      </div>
+      <div class="flex-1">
+        <p class="text-sm font-semibold text-blue-800 dark:text-blue-300">AI Agent is thinking...</p>
+        <p class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+          Please wait! I'm processing this {{ props?.crmConfig?.entity_name_singular.toLowerCase() }}... Check back in a while!
+        </p>
+      </div>
     </div>
+
     <div
       v-else-if="aiJob?.status === 'failed'"
-      class="text-red-500 dark:text-red-400 rounded-lg py-2"
+      class="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl shadow-sm transition-all"
     >
-      <div class="flex items-center justify-between gap-2">
-        <span
-          >AI has failed to process this
-          {{ props?.crmConfig?.entity_name_singular.toLowerCase() }}.</span
-        >
-        <button
-          @click="retryAiJob"
-          :disabled="true"
-          class="btn btn-danger btn-sm py-1 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Retry
-        </button>
+      <div class="flex items-center gap-3">
+        <div class="relative flex items-center justify-center w-10 h-10 rounded-full bg-red-100 dark:bg-red-800/50 text-red-600 dark:text-red-400 flex-shrink-0">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="ICONS.alert" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-red-800 dark:text-red-300">Processing Failed</p>
+          <p class="text-xs text-red-600 dark:text-red-400 mt-0.5">
+            Oops! I couldn't process this {{ props?.crmConfig?.entity_name_singular.toLowerCase() }}.
+          </p>
+        </div>
       </div>
+      <button
+        @click="retryAiJob"
+        :disabled="retrying"
+        class="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <span v-if="retrying" class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+        <svg v-else class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        {{ retrying ? 'Retrying...' : 'Retry' }}
+      </button>
     </div>
 
     <div v-if="loading" class="animate-pulse space-y-4">

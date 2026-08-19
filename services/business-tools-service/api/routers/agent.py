@@ -157,16 +157,26 @@ async def _run_agent_background(
         payload: Full request payload for AgentService.
         callback_config: CallbackConfig with URL, signing, headers, etc.
     """
-    # P3 Concurrency: Acquire semaphore slot before starting LLM work
-    async with _agent_semaphore:
-        mcp_logger.info(f"[AgentBackground] job_id={job_id} | STARTED")
+    try:
+        # P3 Concurrency: Acquire semaphore slot before starting LLM work
+        async with _agent_semaphore:
+            mcp_logger.info(f"[AgentBackground] job_id={job_id} | STARTED")
 
-        service = AgentService()
-        result = await service.run_and_collect(payload)
+            service = AgentService()
+            result = await service.run_and_collect(payload)
 
-        mcp_logger.info(
-            f"[AgentBackground] job_id={job_id} | status={result.status} | "
-            f"duration={result.duration_ms}ms"
+            mcp_logger.info(
+                f"[AgentBackground] job_id={job_id} | status={result.status} | "
+                f"duration={result.duration_ms}ms"
+            )
+    except Exception as e:
+        mcp_logger.error(f"[AgentBackground] job_id={job_id} | FATAL ERROR: {str(e)}")
+        # Guarantee a failed result is sent back even if the LLM/semaphore logic crashes entirely
+        from services.agent import AgentResult
+        result = AgentResult(
+            status="failed",
+            error=f"Python sidecar crashed during execution: {str(e)}",
+            duration_ms=0.0
         )
 
     # Deliver callback (outside semaphore — don't hold the slot during HTTP)

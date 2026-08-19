@@ -82,10 +82,10 @@ class AiGateway
         );
 
         // Add session key for debouncing finalization
-        if ($session) {
+        // if ($session) {
             // $sessionKey = \App\Services\Ai\DebounceService::getSessionKey($tenantId, $session->platform_user_id);
             // $contextPayload->setTempValue('debounce_session_key', $sessionKey);
-        }
+        // }
 
         // Generate a unique Job UUID here so retries of the same job reuse it,
         // but new interactions get a fresh AiJob record.

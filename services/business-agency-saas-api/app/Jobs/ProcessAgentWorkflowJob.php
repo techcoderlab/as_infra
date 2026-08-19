@@ -244,7 +244,7 @@ class ProcessAgentWorkflowJob implements ShouldQueue
          * DB::raw('attempts + 1') ensures the increment happens at the database level.
          */
         $aiJobRecord->update([
-            'status' => 'processing',
+            'status' => 'pending',
             'attempts' => DB::raw('attempts + 1'),
             'started_at' => now(),
         ]);
@@ -270,7 +270,7 @@ class ProcessAgentWorkflowJob implements ShouldQueue
                 // if ($sessionKey) {
                 //     \Illuminate\Support\Facades\Cache::forget("{$sessionKey}:processing");
                 // }
-                
+
                 // Throw exception so Laravel Queue handles the retry
                 throw $exception;
             });

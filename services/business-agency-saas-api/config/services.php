@@ -46,6 +46,7 @@ return [
         'tenant_rate_limit' => (int) env('AI_TENANT_RATE_LIMIT', 10),
         'job_timeout' => (int) env('AI_SIDECAR_TIMEOUT', 300), // 300 = 5mins
         'webhook_base_url' => env('APP_URL', 'http://gateway:80'),
+        'reaper_timeout_minutes' => 20
     ],
 
     'google_business' => [

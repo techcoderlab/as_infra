@@ -159,6 +159,7 @@ Route::middleware(['auth:sanctum', 'throttle:tenant_api', 'check.status', 'log.a
 
     /* Routes for monitoring AI Jobs */
     Route::get('/ai-jobs/{target_id}/monitor', [AiJobController::class, 'monitor']);
+    Route::post('/ai-jobs/{target_id}/retry', [AiJobController::class, 'retry']);
 });
 
 // Wrap public routes in the throttle middleware
