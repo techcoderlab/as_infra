@@ -66,11 +66,21 @@ class WorkflowPayload implements Arrayable
 
         $timeNowForAi = now()->toIso8601String();
 
+        $userQuery = method_exists($target, 'activities') 
+            ? $target->activities()->where('type', 'message_received')->latest()->first()?->content 
+            : null;
+
         $context_addition = [
             'global_data' => [
                 'tenant_id' => $target->tenant_id,
                 'tenant_name' => $target->tenant->name,
                 'target_id' => $target->getKey(),
+                'lead_id' => $target->getKey(),
+                'conversation_id' => $session?->getKey() ?? $target->getKey(),
+                'agent_id' => $agent->id,
+                'active_knowledge_source_ids' => $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray(),
+                'user_query' => $userQuery,
+                'use_memory_graph' => config('services.mcp_sidecar.use_memory_graph', false),
                 'current_date_time' => $timeNowForAi
             ]
         ];

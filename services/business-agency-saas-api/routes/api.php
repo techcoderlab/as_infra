@@ -15,6 +15,7 @@ use App\Http\Controllers\PublicFormController; // Import
 use App\Http\Controllers\Service\WhatsAppIntegrationController;
 use App\Http\Controllers\Sidecar\AiJobController;
 use App\Http\Controllers\Sidecar\AiWebhookController;
+use App\Http\Controllers\Admin\KnowledgeHubController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\WebhookController;
 use Carbon\Carbon;
@@ -50,6 +51,13 @@ Route::middleware(['auth:sanctum', 'throttle:tenant_api', 'check.status', 'log.a
 
     Route::get('/integrations/available', [AiAgentController::class, 'availableIntegrations']);
     Route::apiResource('ai-agents', AiAgentController::class);
+
+    // Knowledge Hub (Tenant-Global Knowledge Sources)
+    Route::get('/knowledge-sources', [KnowledgeHubController::class, 'index']);
+    Route::post('/knowledge-sources', [KnowledgeHubController::class, 'store']);
+    Route::delete('/knowledge-sources/{id}', [KnowledgeHubController::class, 'destroy']);
+    Route::post('/knowledge-sources/{id}/toggle-status', [KnowledgeHubController::class, 'toggleStatus']);
+
 
     // Route::get('/ai-agent/stats', [AiAgentController::class, 'stats']);
     // Route::post('/ai-agent/settings', [AiAgentController::class, 'updateSettings']);
@@ -169,6 +177,9 @@ Route::prefix('public')->group(function () {
     Route::post('/external/form/submit', [PublicFormController::class, 'thirdPartyFormSubmit'])->middleware('throttle:10,1', 'tracker.validate');
     Route::post('/tally/form/submit', [PublicFormController::class, 'tallyFormSubmit'])->middleware('throttle:10,1', 'tracker.validate');
 });
+
+// Internal route for Python Sidecar to download files directly from PHP
+Route::get('/internal/knowledge-sources/{id}/download', [KnowledgeHubController::class, 'internalDownload']);
 
 Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->group(function () {
     Route::post('/mcp/callback/ai-result', [AiWebhookController::class, 'handle'])->name('api.mcp.callback.ai');

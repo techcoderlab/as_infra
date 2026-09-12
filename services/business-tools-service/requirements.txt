@@ -13,3 +13,12 @@ psutil
 google-api-python-client
 google-auth
 anthropic
+asyncpg>=0.30.0
+fastembed>=0.2.7
+pgvector>=0.3.0
+pytest
+pytest-asyncio
+langchain-core>=0.3.0
+langgraph>=0.2.14
+pypdf>=4.0.0
+python-docx>=1.1.0

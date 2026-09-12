@@ -8,9 +8,10 @@ from core.rate_limiter import rate_limiter_registry as registry
 from core.http import get_client, close_client
 from core.config import settings
 from core.logger import logger
+from memory.db import close_pool as close_memory_pool
 
 # --- ROUTERS ---
-from api.routers import agent, whatsapp
+from api.routers import agent, whatsapp, memory
 
 # --- START ---
 start_time = time.time()
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
     # Shutdown: Cleanly close the pool
     logger.info("Shutting down API & closing connections...")
     await close_client()
+    await close_memory_pool()
 
 app = FastAPI(
     title="Business Tools & MCP Sidecar Service", 
@@ -91,6 +93,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Include Routers
 app.include_router(agent.router)
 app.include_router(whatsapp.router)
+app.include_router(memory.router)
 
 @app.get("/health")
 async def health_check():

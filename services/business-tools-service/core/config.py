@@ -77,6 +77,23 @@ class Settings(BaseSettings):
     DOCUMENT_MAX_CONCURRENT_EXTRACTIONS: int = 5
     DOCUMENT_RATE_LIMIT_DELAY: float = 1.5  # Seconds to sleep between fulfilling semaphore slots
     
+    # --- 6. Direct Postgres Access (for vector memory) ---
+    DB_HOST: str = Field(default="postgres", validation_alias="DB_HOST")
+    DB_PORT: int = Field(default=5432, validation_alias="DB_PORT")
+    DB_DATABASE: str = Field(default="as_infra", validation_alias="DB_DATABASE")
+    DB_USERNAME: str = Field(default="as_infra", validation_alias="DB_USERNAME")
+    # DATA: SECRET — never log, never expose in API responses
+    DB_PASSWORD: str = Field(default="", validation_alias="DB_PASSWORD")
+    
+    # --- 7. Semantic Memory ---
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
+    # Cosine distance threshold: 0.0 = identical, 2.0 = opposite.
+    # Results with distance >= this value are considered irrelevant.
+    MEMORY_RELEVANCE_THRESHOLD: float = Field(default=0.75, validation_alias="MEMORY_RELEVANCE_THRESHOLD")
+    
+    # --- 8. Memory Graph Feature Flag ---
+    USE_MEMORY_GRAPH: bool = Field(default=False, validation_alias="USE_MEMORY_GRAPH")
+    
     class Config:
         env_file = ".env"
         # Ignore extra env vars to prevent errors

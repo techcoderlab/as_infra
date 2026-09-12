@@ -83,6 +83,11 @@ class McpSidecarAdapter implements LlmProviderInterface
             'max_iterations' => $payload->context['agent_config']['provider'] == 'cloudflare' ? 15 : 7,
 
         ];
+        
+        // Merge global_data into the root payload (for memory_graph access)
+        if (isset($payload->context['data']['global_data'])) {
+            $data = array_merge($data, $payload->context['data']['global_data']);
+        }
 
         // if chat_session_data exists in $data['context'] remove it
         // 1. Safe check: Ensure 'chat_session_data' exists without risking direct array access crashes

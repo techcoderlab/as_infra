@@ -3,6 +3,7 @@ from tools.definitions.crm_read import LeadReaderTool
 from tools.definitions.whatsapp_sender import WhatsAppSenderTool
 from tools.definitions.google_sheet_reader import GoogleSheetReaderTool
 from tools.definitions.google_sheet_writer import GoogleSheetWriterTool
+from tools.definitions.knowledge_search import KnowledgeSearchTool
 
 # Add new tools here (e.g., GoogleSearchTool, CalendarTool)
 AVAILABLE_TOOLS = {
@@ -11,6 +12,7 @@ AVAILABLE_TOOLS = {
     "whatsapp_sender": [WhatsAppSenderTool()],
     "googlesheets_reader": [GoogleSheetReaderTool()],
     "googlesheets_writer": [GoogleSheetWriterTool()],
+    "search_knowledge_base": [KnowledgeSearchTool()],
 }
 
 def get_tools(tool_names: list[str]):

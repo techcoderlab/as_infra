@@ -139,6 +139,8 @@ class AiAgentController extends Controller
             'user_prompt' => 'nullable|string',
             'tools' => 'nullable|array',
             'triggers' => 'nullable|array', // Logic to save triggers handled below or via relationship
+            'knowledge_source_ids' => 'nullable|array',
+            'knowledge_source_ids.*' => 'integer|exists:tenant_knowledge_sources,id',
             'is_active' => 'boolean',
         ]);
 
@@ -154,7 +156,11 @@ class AiAgentController extends Controller
             $this->syncTriggers($agent, $request->triggers);
         }
 
-        return response()->json($agent->fresh(['trigger']), 201);
+        if ($request->has('knowledge_source_ids')) {
+            $agent->knowledgeSources()->sync($request->knowledge_source_ids);
+        }
+
+        return response()->json($agent->fresh(['trigger', 'knowledgeSources']), 201);
     }
 
     /**
@@ -188,6 +194,8 @@ class AiAgentController extends Controller
             'user_prompt' => 'nullable|string',
             'tools' => 'nullable|array',
             'triggers' => 'nullable|array',
+            'knowledge_source_ids' => 'nullable|array',
+            'knowledge_source_ids.*' => 'integer|exists:tenant_knowledge_sources,id',
             'is_active' => 'boolean',
         ]);
 
@@ -199,6 +207,10 @@ class AiAgentController extends Controller
             $this->syncTriggers($agent, $request->triggers);
         }
 
+        if ($request->has('knowledge_source_ids')) {
+            $agent->knowledgeSources()->sync($request->knowledge_source_ids);
+        }
+
         // Clear Cache (Critical for instant updates)
         Cache::forget("ai_agent:{$tenantId}:{$originalSlug}");
         if ($originalSlug !== $agent->slug) {
@@ -206,7 +218,7 @@ class AiAgentController extends Controller
         }
 
         // Refresh to include any updated relationships/attributes
-        return response()->json($agent->fresh(['trigger']));
+        return response()->json($agent->fresh(['trigger', 'knowledgeSources']));
     }
 
     /**

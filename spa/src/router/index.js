@@ -19,6 +19,7 @@ import DashboardWrapper from '@/views/DashboardWrapper.vue' // Import the wrappe
 
 import IntegrationPage from '../views/admin/IntegrationsPage.vue'
 import AiAgentBuilderPage from '../views/admin/AiAgentBuilder.vue'
+import KnowledgeHubPage from '../views/admin/KnowledgeHub.vue'
 
 // Auth/Public Views
 import LoginPage from '../views/auth/LoginPage.vue'
@@ -100,6 +101,11 @@ const router = createRouter({
           // meta: { module: 'ai_agents' },
         },
 
+        {
+          path: 'knowledge-hub',
+          name: 'knowledge-hub',
+          component: KnowledgeHubPage,
+        },
         {
           path: 'tenants',
           name: 'super-admin-tenants',

@@ -112,6 +112,29 @@ class AgentService:
     async def run(self, request_data):
         start_time = time.monotonic()
         
+        # ─────────────────────────────────────────────────────
+        # FEATURE FLAG: Memory Graph Orchestration
+        # When USE_MEMORY_GRAPH=true and the request contains the required
+        # memory keys (tenant_id + conversation_id + lead_id in context),
+        # delegate to the LangGraph pipeline instead of the standard flow.
+        # ─────────────────────────────────────────────────────
+        from core.config import settings as _settings
+        if _settings.USE_MEMORY_GRAPH:
+            ctx = request_data.get("context", {})
+            gd = ctx.get("global_data", {})
+            mcp_logger.info("🧠 USE_MEMORY_GRAPH=true — "+ json.dumps(ctx, indent=4))
+            has_memory_keys = (
+                (gd.get("tenant_id") or ctx.get("tenant_id"))
+                and (gd.get("conversation_id") or ctx.get("conversation_id"))
+                or (gd.get("lead_id") or ctx.get("lead_id"))
+            )
+            if has_memory_keys:
+                mcp_logger.info("🧠 USE_MEMORY_GRAPH=true — delegating to memory graph")
+                from services.orchestration.memory_graph import run_memory_graph
+                async for event in run_memory_graph(request_data):
+                    yield event
+                return
+
         provider = request_data.get('provider')
         api_key = request_data.get('apiKey')
         model = request_data.get('model')

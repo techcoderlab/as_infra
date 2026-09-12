@@ -155,6 +155,7 @@ jobs:
           MCP_SIDECAR_CALLING_API_NAME='agency-saas-api-prod'
           MCP_SIDECARD_CLIENT_APP_ID=${{vars.SIDECAR_APP_ID}}
           MCP_SIDECARD_CLIENT_SECRET=${{secrets.SIDECAR_APP_SECRET}}
+          USE_MEMORY_GRAPH=${{ vars.USE_MEMORY_GRAPH || 'true' }}
           AI_GLOBAL_CONCURRENCY=50
           AI_TENANT_CONCURRENCY=10
           AI_TENANT_RATE_LIMIT=10

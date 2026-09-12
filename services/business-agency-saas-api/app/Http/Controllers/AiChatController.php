@@ -386,6 +386,15 @@ class AiChatController extends Controller
                         'tenant_id' => $aiChat->tenant_id,
                         'chat_id' => $aiChat->id, // Pass ID for tool context
                         'current_date_time' => now()->toIso8601String(),
+                        'global_data' => [
+                            'tenant_id' => $aiChat->tenant_id,
+                            'conversation_id' => $aiChat->id,
+                            'lead_id' => $aiChat->lead_id,
+                            'agent_id' => $aiChat->ai_agent_id,
+                            'active_knowledge_source_ids' => $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray(),
+                            'user_query' => $lastUserMessage->content,
+                            'use_memory_graph' => config('services.mcp_sidecar.use_memory_graph', false)
+                        ],
                     ],
                     $history,
                     $lastUserMessage->content
@@ -428,7 +437,6 @@ class AiChatController extends Controller
                         'content' => $fullAiText,
                     ]);
                 }
-
                 echo 'data: ' . json_encode(['type' => 'done']) . "\n\n";
             } catch (\Exception $e) {
                 Log::error('Stream Error: ' . $e->getMessage());

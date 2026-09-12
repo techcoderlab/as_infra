@@ -30,11 +30,6 @@ return [
         'id' => 'search_knowledge_base',
         'label' => 'Knowledge Hub',
         'desc' => 'Search from custom Knowledge Base',
-    ],
-    [
-        'id' => 'navigate_tree',
-        'label' => 'Document Navigator',
-        'desc' => 'Navigate Document Content',
-    ],
+    ]
 
 ];

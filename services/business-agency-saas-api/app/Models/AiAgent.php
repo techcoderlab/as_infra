@@ -100,6 +100,11 @@ class AiAgent extends Model
         return $this->belongsTo(Tenant::class);
     }
 
+    public function knowledgeSources(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(KnowledgeSource::class, 'agent_knowledge_source');
+    }
+
     /**
      * Resolves the Integration record for this Agent's specific "brain" (service).
      * * Usage: $agent->integration

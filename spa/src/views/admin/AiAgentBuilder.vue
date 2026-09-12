@@ -27,12 +27,14 @@ const form = ref({
   system_prompt: '',
   user_prompt: '',
   tools: [],
+  knowledge_source_ids: [],
   selected_trigger: '', // Changed: Single string for Radio button binding
   is_active: true,
 })
 
 // --- Configuration ---
 const availableTools = ref([])
+const availableKnowledgeSources = ref([])
 
 const availableTriggers = ref([])
 
@@ -40,15 +42,17 @@ const availableTriggers = ref([])
 const fetchData = async () => {
   loading.value = true
   try {
-    const [agentsRes, servicesRes] = await Promise.all([
+    const [agentsRes, servicesRes, sourcesRes] = await Promise.all([
       api.get('/ai-agents'),
       api.get('/integrations/available'),
+      api.get('/knowledge-sources'),
     ])
     // console.log(agentsRes)
     agents.value = agentsRes.data.agents || []
     availableTriggers.value = agentsRes.data.availableTriggers || []
     availableTools.value = agentsRes.data.availableAiTools || []
     availableBrains.value = servicesRes.data || []
+    availableKnowledgeSources.value = sourcesRes.data?.sources?.filter(s => s.is_active && s.status === 'indexed') || []
   } catch (e) {
     console.error('Failed to load data:', e)
   } finally {
@@ -69,6 +73,7 @@ const openCreateModal = () => {
     system_prompt: 'You are a helpful assistant.',
     user_prompt: 'Process this data: {{data}}',
     tools: [],
+    knowledge_source_ids: [],
     selected_trigger: '', // Reset trigger
     is_active: true,
   }
@@ -108,6 +113,7 @@ const openEditModal = (agent) => {
   form.value = {
     ...data,
     tools: toolsArray,
+    knowledge_source_ids: data.knowledge_sources ? data.knowledge_sources.map(s => s.id) : [],
     selected_trigger: currentTrigger, // Bind to the radio button
   }
 
@@ -387,6 +393,32 @@ onMounted(fetchData)
                       <label :for="tool.id" class="ml-2 cursor-pointer">
                         <div class="text-sm text-slate-700 dark:text-slate-300">
                           {{ tool.label }}
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="border border-slate-400 dark:border-slate-700 rounded-lg p-4 md:col-span-2">
+                  <h4 class="text-sm font-bold text-slate-900 dark:text-white mb-3">Knowledge Base</h4>
+                  <div v-if="availableKnowledgeSources.length === 0" class="text-sm text-slate-500 italic">
+                    No active & indexed knowledge sources available. Add them in the Knowledge Hub.
+                  </div>
+                  <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div v-for="source in availableKnowledgeSources" :key="source.id" class="flex items-start bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <input
+                        type="checkbox"
+                        :id="'source_'+source.id"
+                        :value="source.id"
+                        v-model="form.knowledge_source_ids"
+                        class="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label :for="'source_'+source.id" class="ml-3 cursor-pointer flex-1">
+                        <div class="text-sm font-bold text-slate-700 dark:text-slate-300 line-clamp-1">
+                          {{ source.title }}
+                        </div>
+                        <div class="text-xs text-slate-500 capitalize mt-0.5">
+                          {{ source.source_type }}
                         </div>
                       </label>
                     </div>
