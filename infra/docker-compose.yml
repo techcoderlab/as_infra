@@ -83,7 +83,8 @@ services:
   # pm.max_children=60 could never actually run inside a 1G app container).
   ##############################################################################
   postgres:
-    image: postgres:15-alpine
+    # image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: as_infra_postgres
     restart: unless-stopped
     command:
@@ -202,6 +203,7 @@ services:
       - MCP_SIDECAR_CALLING_API_NAME=${MCP_SIDECAR_CALLING_API_NAME}
       - MCP_SIDECARD_CLIENT_APP_ID=${MCP_SIDECARD_CLIENT_APP_ID}
       - MCP_SIDECARD_CLIENT_SECRET=${MCP_SIDECARD_CLIENT_SECRET}
+      - USE_MEMORY_GRAPH=${USE_MEMORY_GRAPH}
       - AI_GLOBAL_CONCURRENCY=${AI_GLOBAL_CONCURRENCY}
       - AI_TENANT_CONCURRENCY=${AI_TENANT_CONCURRENCY}
       - AI_TENANT_RATE_LIMIT=${AI_TENANT_RATE_LIMIT}
@@ -270,6 +272,7 @@ services:
       - MCP_SIDECAR_CALLING_API_NAME=${MCP_SIDECAR_CALLING_API_NAME}
       - MCP_SIDECARD_CLIENT_APP_ID=${MCP_SIDECARD_CLIENT_APP_ID}
       - MCP_SIDECARD_CLIENT_SECRET=${MCP_SIDECARD_CLIENT_SECRET}
+      - USE_MEMORY_GRAPH=${USE_MEMORY_GRAPH}
       - AI_GLOBAL_CONCURRENCY=${AI_GLOBAL_CONCURRENCY}
       - AI_TENANT_CONCURRENCY=${AI_TENANT_CONCURRENCY}
       - AI_TENANT_RATE_LIMIT=${AI_TENANT_RATE_LIMIT}
@@ -333,6 +336,7 @@ services:
       - MCP_SIDECAR_CALLING_API_NAME=${MCP_SIDECAR_CALLING_API_NAME}
       - MCP_SIDECARD_CLIENT_APP_ID=${MCP_SIDECARD_CLIENT_APP_ID}
       - MCP_SIDECARD_CLIENT_SECRET=${MCP_SIDECARD_CLIENT_SECRET}
+      - USE_MEMORY_GRAPH=${USE_MEMORY_GRAPH}
       - AI_GLOBAL_CONCURRENCY=${AI_GLOBAL_CONCURRENCY}
       - AI_TENANT_CONCURRENCY=${AI_TENANT_CONCURRENCY}
       - AI_TENANT_RATE_LIMIT=${AI_TENANT_RATE_LIMIT}
@@ -433,6 +437,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       - ENV=production
       - PORT=${TOOLS_PORT:-8017}
@@ -444,9 +450,16 @@ services:
       - LARAVEL_APP_SECRET=${LARAVEL_APP_SECRET}
       - MCP_SIDECARD_CLIENT_APP_ID=${MCP_SIDECARD_CLIENT_APP_ID}
       - MCP_SIDECARD_CLIENT_SECRET=${MCP_SIDECARD_CLIENT_SECRET}
+      - USE_MEMORY_GRAPH=${USE_MEMORY_GRAPH}
       - ALLOWED_CALLBACK_DOMAINS=${ALLOWED_CALLBACK_DOMAINS}
       - ROOT_PATH=/tools
       - TZ=Asia/Karachi
+      # Direct Postgres access for vector memory (semantic search)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${POSTGRES_AS_DB}
+      - DB_USERNAME=${POSTGRES_AS_USER}
+      - DB_PASSWORD=${POSTGRES_AS_USER_PASSWORD}
     volumes:
       - ${DATA_ROOT:-/opt/docker-data/app-data/as_infra}/tools/logs:/app/logs
     healthcheck:
@@ -464,8 +477,8 @@ services:
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 1024M }
-        reservations: { memory: 384M }
+        limits: { cpus: "1.0", memory: 1536M }
+        reservations: { memory: 512M }
 
   ##############################################################################
   # adminer — DB admin UI, LAN-only debug tool
