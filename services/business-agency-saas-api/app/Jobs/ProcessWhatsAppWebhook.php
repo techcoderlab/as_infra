@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Events\WhatsAppMessageReceived;
+use App\Models\AiChat;
+use App\Models\ChatMessage;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\LeadChatSession;
@@ -189,22 +191,31 @@ class ProcessWhatsAppWebhook implements ShouldQueue
                 Log::info("Created new Lead #{$lead->id} from " . self::PLATFORM_LABEL . " ID {$waId}");
             }
 
-            // Log incoming message activity
-            $activities[] = [
-                'lead_id' => $lead->id,
-                'type' => 'message_received',
-                'content' => "{$senderName}: {$content}",
-                'metadata' => json_encode([
-                    'message_id' => $message['id'] ?? null,
+            // Create or fetch the unified AiChat
+            $aiChat = AiChat::findOrCreateForTarget(
+                $this->tenantId,
+                'lead',
+                $lead->id,
+                self::PLATFORM
+            );
+
+            // Save the incoming message to chat_messages
+            ChatMessage::create([
+                'ai_chat_id' => $aiChat->id,
+                'user_id' => null,
+                'role' => 'user',
+                'content' => $content,
+                'platform_message_id' => $message['id'] ?? null,
+                'metadata' => [
                     'platform' => self::PLATFORM,
                     'timestamp' => $message['timestamp'] ?? time(),
                     'raw_type' => $type,
-                    'role' => 'user', // Explicitly mark as user for history reconstruction
-                ]),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
+                    'sender_name' => $senderName,
+                ],
+            ]);
 
+            // DEPRECATED: We no longer write 'message_received' to lead_activities.
+            // Only 'external_system_inserted' and others are written to lead_activities.
             if (!empty($activities)) {
                 LeadActivity::insert($activities);
             }
@@ -218,6 +229,7 @@ class ProcessWhatsAppWebhook implements ShouldQueue
             ]);
 
             $session->lead_id = $lead->id;
+            $session->ai_chat_id = $aiChat->id;
             $session->status = 'active';
             $session->last_interaction_at = $now;
             $session->message_count = ($session->message_count ?? 0) + 1;

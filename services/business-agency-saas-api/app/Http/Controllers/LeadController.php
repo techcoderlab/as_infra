@@ -133,6 +133,7 @@ class LeadController extends Controller
         $this->authorize('view', $lead);
 
         $activities = $lead->activities()
+            ->whereNotIn('type', ['message_received', 'ai_reply'])
             ->latest()
             ->paginate(20, ['id', 'type', 'content', 'created_at']);
 

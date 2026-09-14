@@ -173,7 +173,7 @@ Route::middleware(['auth:sanctum', 'throttle:tenant_api', 'check.status', 'log.a
 // Wrap public routes in the throttle middleware
 Route::prefix('public')->group(function () {
     Route::get('/form/{uuid}', [PublicFormController::class, 'show']);
-    Route::post('/form/{uuid}/submit', [PublicFormController::class, 'submit'])->middleware('throttle:10,1', 'tracker.validate');
+    Route::post('/form/{uuid}/submit', [PublicFormController::class, 'submit'])->middleware('throttle:10,1');
     Route::post('/external/form/submit', [PublicFormController::class, 'thirdPartyFormSubmit'])->middleware('throttle:10,1', 'tracker.validate');
     Route::post('/tally/form/submit', [PublicFormController::class, 'tallyFormSubmit'])->middleware('throttle:10,1', 'tracker.validate');
 });
@@ -202,7 +202,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
 
         // 1. Auth & Tenant Guard (Unchanged)
         $tenantId = $request->header('x-tenant-id');
-        if (! $tenantId) {
+        if (!$tenantId) {
             return response()->json(['error' => 'Tenant context missing'], 403);
         }
 
@@ -212,10 +212,10 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
             // PRE-FILTER: Avoid DB overhead if no data is sent
             $dataToUpdate = array_filter(
                 $request->only(['temperature', 'status', 'score', 'won', 'payload']),
-                fn ($value) => ! is_null($value)
+                fn($value) => !is_null($value)
             );
 
-            Log::info("MCP Update: Updating lead #{$leadId} with data: ".json_encode($dataToUpdate));
+            Log::info("MCP Update: Updating lead #{$leadId} with data: " . json_encode($dataToUpdate));
 
             if (empty($dataToUpdate)) {
                 return response()->json(['success' => true]);
@@ -228,7 +228,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
                     ->lockForUpdate()
                     ->first();
 
-                if (! $lead) {
+                if (!$lead) {
                     throw new ModelNotFoundException("Lead #{$leadId} not found.");
                 }
 
@@ -241,7 +241,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
 
                 foreach ($basicFields as $dbKey => $label) {
 
-                    if (! isset($dataToUpdate[$dbKey])) {
+                    if (!isset($dataToUpdate[$dbKey])) {
                         continue;
                     }
 
@@ -260,7 +260,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
                     $activities[] = [
                         'lead_id' => $lead->getKey(),
                         'type' => 'mcp_updated',
-                        'content' => 'AI updated '.ucwords($label)." to: {$displayVal}",
+                        'content' => 'AI updated ' . ucwords($label) . " to: {$displayVal}",
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
@@ -298,7 +298,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
                         $activities[] = [
                             'lead_id' => $lead->getKey(),
                             'type' => 'mcp_updated',
-                            'content' => 'Collected '.ucwords($cleanKey).': '.$displayVal,
+                            'content' => 'Collected ' . ucwords($cleanKey) . ': ' . $displayVal,
                             'created_at' => now(),
                             'updated_at' => now(),
                         ];
@@ -310,12 +310,12 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
                 }
 
                 // 5. Atomic Update only with verified data
-                if (! empty($finalUpdateData)) {
+                if (!empty($finalUpdateData)) {
                     $lead->updateQuietly($finalUpdateData);
                 }
 
                 // 6. Fail-safe Bulk Insert
-                if (! empty($activities)) {
+                if (!empty($activities)) {
                     \App\Models\LeadActivity::insert($activities);
                 }
             });
@@ -324,7 +324,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
         } catch (ModelNotFoundException $e) {
             return response()->json(['error' => $e->getMessage()], 404);
         } catch (\Throwable $e) {
-            \Log::error('MCP Update Error: '.$e->getMessage());
+            \Log::error('MCP Update Error: ' . $e->getMessage());
 
             return response()->json(['error' => 'Internal Server Error'], 500);
         }
@@ -333,7 +333,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
     Route::post('/internal/leads/search', function (Request $request) {
         // 1. Fast Security Exit
         $tenantId = $request->header('x-tenant-id');
-        if (! $tenantId) {
+        if (!$tenantId) {
             return response()->json(['error' => 'Tenant context missing'], 403);
         }
 
@@ -411,7 +411,7 @@ Route::middleware([\App\Http\Middleware\VerifyExternalAppSignature::class])->gro
                 'results' => $results,
             ]);
         } catch (\Throwable $e) {
-            \Log::error('MCP Search Error: '.$e->getMessage());
+            \Log::error('MCP Search Error: ' . $e->getMessage());
 
             return response()->json(['error' => 'Internal Server Error'], 500);
         }

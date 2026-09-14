@@ -134,6 +134,7 @@ class AiGateway
             'tool_configs' => $agent->tool_configs ?? [], // e.g. ['read_leads' => ['api_key' => '...']]
             'use_stream' => true,
             'thinking_budget' => -1,
+            'use_memory_graph' => $context['agent_config']['use_memory_graph'] ?? false,
         ];
 
 

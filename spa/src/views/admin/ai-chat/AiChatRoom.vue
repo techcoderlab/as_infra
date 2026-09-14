@@ -1,10 +1,12 @@
 <template>
-  <div class="h-[calc(100vh-100px)] flex flex-col -m-4 sm:-m-8">
+  <div class="w-full h-full flex flex-col">
     <div
+      v-if="!props.hideHeader"
       class="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between z-10 transition-colors duration-300"
     >
       <div class="flex items-center gap-4">
         <button
+          v-if="!props.hideHeader"
           @click="router.back()"
           class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
         >
@@ -71,9 +73,9 @@
         }"
         :messageStyles.prop="styleConfig.messageStyles"
         :textInput.prop="styleConfig.textInput"
-        :submitButtonStyles.prop="styleConfig.submitButtonStyles"
+        :submitButtonStyles.prop="props.readonly ? { submit: { container: { default: { display: 'none' } } } } : styleConfig.submitButtonStyles"
         :auxiliaryStyle.prop="styleConfig.auxiliaryStyle"
-        :attachmentButtonStyle.prop="styleConfig.attachmentButtonStyle"
+        :attachmentButtonStyle.prop="props.readonly ? { styles: { default: { display: 'none' } } } : styleConfig.attachmentButtonStyle"
         class="deep-chat-host"
         style="width: 100%; height: 100%; border: none; background: transparent"
       ></deep-chat>
@@ -94,12 +96,27 @@ import { useRoute, useRouter } from 'vue-router'
 import request from '@/utils/request'
 import 'deep-chat'
 
+const props = defineProps({
+  chatId: {
+    type: [String, Number],
+    default: null
+  },
+  readonly: {
+    type: Boolean,
+    default: false
+  },
+  hideHeader: {
+    type: Boolean,
+    default: false
+  }
+})
+
 const route = useRoute()
 const router = useRouter()
 const deepChatRef = ref(null)
 const chatConfig = ref(null)
 const history = ref([])
-const chatId = route.params.id
+const chatId = props.chatId || route.params.id
 
 // Pagination & Status
 const nextCursor = ref(null)
@@ -419,7 +436,14 @@ async function loadMoreHistory() {
 onMounted(async () => {
   try {
     const configRes = await request.get(`/ai-chats`)
+    
     chatConfig.value = configRes.data.chats.find((c) => c.id == chatId)
+
+    const agt = configRes.data.agents.find((c) => c.id == chatConfig.value?.ai_agent_id)
+    // console.log(`agt: ${JSON.stringify(agt, null, 2)}`)
+
+    props.readonly = (chatConfig.value?.target_type != null && chatConfig.value?.target_type != "") || agt?.is_active == false
+
 
     const attachChat = () => {
       const el = deepChatRef.value
@@ -479,7 +503,8 @@ const styleConfig = computed(() => {
 
   return {
     textInput: {
-      placeholder: { text: 'Type a message...', style: { color: c.placeholder } },
+      disabled: props.readonly,
+      placeholder: { text: props.readonly ? 'Chat is read-only' : 'Type a message...', style: { color: c.placeholder } },
       styles: {
         container: {
           backgroundColor: c.inputBg,
@@ -545,12 +570,17 @@ const styleConfig = computed(() => {
       },
     },
     auxiliaryStyle: `
-            #messages {width:100%; margin: 0 auto; padding-bottom: 200px; }
-            ::-webkit-scrollbar { width: 8px; }
-            ::-webkit-scrollbar-thumb { background: ${dark ? '#334155' : '#cbd5e1'}; borderRadius: 50%; }
-            ::-webkit-scrollbar-track { background: transparent; }
-            .deep-chat-host { width: 100%; height: 100%; display: block; background: transparent; border: none; }
-        `,
+      #messages {
+        width: 100%; 
+        padding: 24px 32px; 
+        padding-bottom: ${props.readonly ? '40px' : '150px'}; 
+        box-sizing: border-box; 
+      }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-thumb { background: ${dark ? '#334155' : '#cbd5e1'}; border-radius: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      .deep-chat-host { width: 100%; height: 100%; display: block; background: transparent; border: none; }
+    `,
   }
 })
 </script>

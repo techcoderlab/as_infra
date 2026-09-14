@@ -48,7 +48,7 @@
             <span
               :class="[
                 'relative inline-flex rounded-full h-4 w-4',
-                agent.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                agent?.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
               ]"
               :title="agent?.is_active ? 'Active' : 'Inactive'"
             ></span>
@@ -218,8 +218,10 @@ async function loadChats() {
     const { data } = result[0]
 
     if (data) {
-      chats.value = data.chats
+      chats.value = data.chats.filter((c) => c.target_type === null || c.target_type === "")
       agentSlugs.value = data.agents
+
+      // console.log(`Chats: ${JSON.stringify(chats.value, null, 2)}`)
     }
 
     // console.log(data.agents)

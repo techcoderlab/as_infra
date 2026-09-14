@@ -82,6 +82,8 @@ class McpSidecarAdapter implements LlmProviderInterface
 
             'max_iterations' => $payload->context['agent_config']['provider'] == 'cloudflare' ? 15 : 7,
 
+            'use_memory_graph' => $payload->context['agent_config']['use_memory_graph'] ?? false,
+
         ];
         
         // Merge global_data into the root payload (for memory_graph access)

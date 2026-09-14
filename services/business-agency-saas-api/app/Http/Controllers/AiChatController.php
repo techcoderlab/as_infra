@@ -20,20 +20,25 @@ class AiChatController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $this->authorize('viewAny', AiChat::class);
 
         // Trait automatically filters by tenant_id
-
-        // Cache::forget('ai_agents');
         $tenantId = Auth::user()->current_tenant_id;
         $agents = Cache::remember("ai_agents_{$tenantId}", 30, function () {
             return AiAgent::select('id', 'slug', 'is_active')->latest()->get();
         });
 
+        $query = AiChat::select(['id', 'tenant_id', 'name', 'ai_agent_id', 'avatar_url', 'webhook_url', 'webhook_secret', 'welcome_message', 'target_type', 'target_id', 'platform', 'status'])->latest();
+
+        if ($request->has('target_type') && $request->has('target_id')) {
+            $query->where('target_type', $request->query('target_type'))
+                ->where('target_id', $request->query('target_id'));
+        }
+
         return response()->json([
-            'chats' => AiChat::select('id', 'tenant_id', 'name', 'ai_agent_id', 'avatar_url', 'webhook_url', 'webhook_secret', 'welcome_message')->latest()->get(),
+            'chats' => $query->get(),
             'agents' => $agents,
         ]);
     }
@@ -48,6 +53,10 @@ class AiChatController extends Controller
             'webhook_secret' => 'nullable|string',
             'welcome_message' => 'nullable|string',
             'ai_agent_id' => 'nullable|exists:ai_agents,id',
+            'target_type' => 'nullable|string',
+            'target_id' => 'nullable|integer',
+            'platform' => 'nullable|string',
+            'status' => 'nullable|string',
         ]);
 
         $chat = AiChat::create($validated);
@@ -66,6 +75,10 @@ class AiChatController extends Controller
             'webhook_secret' => 'nullable|string',
             'welcome_message' => 'nullable|string',
             'ai_agent_id' => 'nullable|exists:ai_agents,id',
+            'target_type' => 'nullable|string',
+            'target_id' => 'nullable|integer',
+            'platform' => 'nullable|string',
+            'status' => 'nullable|string',
         ]);
 
         $aiChat->update($validated);
@@ -85,38 +98,44 @@ class AiChatController extends Controller
     /**
      * Get Chat History with Pagination (Cursor-based)
      */
-    public function history(Request $request, AiChat $aiChat)
+public function history(Request $request, AiChat $aiChat)
     {
-
+        // 1. Authorization secures access; if they can view the chat, they can view its messages.
         $this->authorize('view', $aiChat);
 
-        $limit = 25; // Strict limit
-        $beforeId = $request->input('before_id'); // The cursor
+        $limit = 25; 
+        $beforeId = $request->input('before_id'); 
 
-        // 1. Build Query (Latest messages first)
+        // 2. Build Query (Removed user_id check to allow lead messages)
         $query = ChatMessage::where('ai_chat_id', $aiChat->id)
-            ->where('user_id', Auth::id())
-            // ->orderBy('id', 'desc');
-            ->orderByRaw('id DESC NULLS LAST'); // for postgres
+            ->orderByRaw('id DESC NULLS LAST'); // Preserved your Postgres optimization
 
-        // 2. Apply Cursor (Load messages OLDER than the top one)
+        // 3. Apply Cursor (Load messages OLDER than the top one)
         if ($beforeId) {
             $query->where('id', '<', $beforeId);
         }
 
-        // 3. Fetch Data
-        $messages = $query->take($limit)->get();
+        // 4. Fetch limit + 1 to check if there are more records without a second query
+        $messages = $query->take($limit + 1)->get();
 
-        // 4. Check if more exist (for infinite scroll)
+        $hasMore = $messages->count() > $limit;
+
+        if ($hasMore) {
+            // Remove the 26th record so we only return the strict limit of 25
+            $messages->pop();
+        }
+
+        // Calculate the next cursor based on the oldest message in this chunk
         $lastMsg = $messages->last();
-        $hasMore = $lastMsg ? ChatMessage::where('ai_chat_id', $aiChat->id)
-            ->where('user_id', Auth::id())
-            ->where('id', '<', $lastMsg->id)
-            ->exists() : false;
+        $nextCursor = $lastMsg ? $lastMsg->id : null;
 
         // 5. Transform for Deep Chat (Reverse to chronological: Old -> New)
         $formatted = $messages->reverse()->values()->map(function ($msg) {
-            $m = ['role' => $msg->role, 'text' => $msg->content];
+            $m = [
+                'role' => $msg->role, 
+                'text' => $msg->content
+            ];
+            
             if ($msg->files) {
                 $m['files'] = $msg->files;
             }
@@ -127,7 +146,7 @@ class AiChatController extends Controller
         return response()->json([
             'messages' => $formatted,
             'has_more' => $hasMore,
-            'next_cursor' => $lastMsg ? $lastMsg->id : null,
+            'next_cursor' => $nextCursor,
         ]);
     }
 
@@ -386,6 +405,9 @@ class AiChatController extends Controller
                         'tenant_id' => $aiChat->tenant_id,
                         'chat_id' => $aiChat->id, // Pass ID for tool context
                         'current_date_time' => now()->toIso8601String(),
+                        'agent_config' => [
+                            'use_memory_graph' => config('services.mcp_sidecar.use_memory_graph', false)
+                        ],
                         'global_data' => [
                             'tenant_id' => $aiChat->tenant_id,
                             'conversation_id' => $aiChat->id,
@@ -393,7 +415,6 @@ class AiChatController extends Controller
                             'agent_id' => $aiChat->ai_agent_id,
                             'active_knowledge_source_ids' => $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray(),
                             'user_query' => $lastUserMessage->content,
-                            'use_memory_graph' => config('services.mcp_sidecar.use_memory_graph', false)
                         ],
                     ],
                     $history,

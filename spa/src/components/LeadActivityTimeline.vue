@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../utils/request'
-// import { formatDate, humanizeDate } from '../utils/helpers'
+import AiChatRoom from '../views/admin/ai-chat/AiChatRoom.vue'
 
 const props = defineProps({
   leadId: { type: Number, required: true },
@@ -15,6 +15,22 @@ const loadingMore = ref(false)
 const retrying = ref(false)
 const page = ref(1)
 const hasMore = ref(false)
+
+const activeTab = ref('timeline')
+const aiChatId = ref(null)
+
+const fetchAiChatId = async () => {
+  try {
+    const res = await api.get('/ai-chats', { params: { target_type: 'lead', target_id: props.leadId }})
+    if (res.data.chats && res.data.chats.length > 0) {
+      aiChatId.value = res.data.chats[0].id
+
+      // console.log(`✅ AI Chat ID: ${aiChatId.value}`)
+    }
+  } catch(e) {
+    console.error('Failed to fetch AI Chat ID', e)
+  }
+}
 
 const aiJob = ref({
   status: props.job?.status ?? 'pending',
@@ -168,9 +184,8 @@ const retryAiJob = async () => {
 }
 
 onMounted(() => {
-  fetchActivities() // commented because it is fetching by polling
-  // startPolling()
-  // startPollingForLogs()
+  fetchActivities()
+  fetchAiChatId()
 })
 
 onUnmounted(() => {
@@ -309,6 +324,34 @@ onMounted(fetchActivities)
 
 <template>
   <div class="space-y-6">
+    <!-- Tabs Header -->
+    <div class="flex border-b border-slate-200 dark:border-slate-800">
+      <button
+        @click="activeTab = 'timeline'"
+        :class="[
+          'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+          activeTab === 'timeline'
+            ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+            : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+        ]"
+      >
+        Timeline
+      </button>
+      <button
+        @click="activeTab = 'chat'"
+        :class="[
+          'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+          activeTab === 'chat'
+            ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+            : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+        ]"
+      >
+        Chat History
+      </button>
+    </div>
+
+    <!-- Timeline Tab -->
+    <div v-show="activeTab === 'timeline'" class="space-y-6">
     <!-- AI Status Banner -->
     <div
       v-if="aiJob?.status === 'pending' || aiJob?.status === 'processing'"
@@ -446,6 +489,23 @@ onMounted(fetchActivities)
       class="text-center py-10 bg-slate-50 dark:bg-slate-900/50 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800"
     >
       <p class="text-sm text-slate-400 italic">No activities logged for this yet.</p>
+    </div>
+    </div> <!-- End Timeline Tab -->
+
+    <!-- Chat History Tab -->
+    <div 
+      v-if="activeTab === 'chat'" 
+      class="h-[600px] w-full border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-slate-50 dark:bg-slate-900/30 relative flex flex-col"
+    >
+      <AiChatRoom 
+        v-if="aiChatId" 
+        :chatId="aiChatId" 
+        :readonly="true" 
+        :hideHeader="true" 
+      />
+      <div v-else class="flex items-center justify-center flex-1 h-full text-slate-500 italic">
+        No chat history found for this lead.
+      </div>
     </div>
   </div>
 </template>

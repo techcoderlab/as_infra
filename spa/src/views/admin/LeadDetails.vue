@@ -457,7 +457,7 @@ onMounted(fetchLead)
             </div>
           </div>
 
-          <div class="card h-[50vh] overflow-y-auto custom-scrollbar">
+          <div class="card h-[60vh] overflow-y-auto custom-scrollbar">
             <div class="card-header sticky top-0 z-20">
               <span class="card-title">Timeline</span>
             </div>

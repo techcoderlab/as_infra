@@ -136,29 +136,23 @@ class ProcessAgentWorkflowJob implements ShouldQueue
         $context['agent_config']['api_key'] = $agent->integration->value['api_key'];
 
         $history = [];
-        if (strtolower($this->payload->targetType) == 'lead' && !empty($agent->context_window_size)) {
-
-            // Reconstruct History from LeadActivity
-            // We fetch the last 10 relevant interactions
-
-            $activities = Lead::where('tenant_id', $this->tenantId)->find($this->payload->targetId)->activities()
-                ->whereIn('type', ['message_received', 'ai_reply'])
-                ->latest()
-                ->take((int) $agent->context_window_size)
-                ->get()
-                ->reverse(); // Chronological order for LLM
-
-            foreach ($activities as $activity) {
-                // If the activity is a user message
-                if ($activity->type === 'message_received') {
-                    // Extract content cleanly (remove sender name prefix if present)
-                    // Format: "Name: message" -> we just want "message" if possible, or keep as is.
-                    // For now, simpler is better:
-                    $history[] = ['role' => 'user', 'content' => $activity->content];
-                }
-                // If the activity is an AI response
-                elseif ($activity->type === 'ai_reply') {
-                    $history[] = ['role' => 'assistant', 'content' => $activity->content];
+        if (!empty($agent->context_window_size)) {
+            // Unified history from chat_messages via AiChat
+            $aiChat = \App\Models\AiChat::where('tenant_id', $this->tenantId)
+                ->where('target_type', strtolower($this->payload->targetType))
+                ->where('target_id', $this->payload->targetId)
+                ->first();
+            
+            if ($aiChat) {
+                $messages = \App\Models\ChatMessage::where('ai_chat_id', $aiChat->id)
+                    ->orderByDesc('id')
+                    ->take((int) $agent->context_window_size)
+                    ->get()
+                    ->reverse();
+                
+                foreach ($messages as $message) {
+                    $role = $message->role === 'user' ? 'user' : 'assistant';
+                    $history[] = ['role' => $role, 'content' => $message->content];
                 }
             }
         }

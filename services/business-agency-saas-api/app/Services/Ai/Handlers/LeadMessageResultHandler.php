@@ -2,6 +2,8 @@
 
 namespace App\Services\Ai\Handlers;
 
+use App\Models\AiChat;
+use App\Models\ChatMessage;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\Tenant;
@@ -77,8 +79,8 @@ class LeadMessageResultHandler implements WorkflowResultHandler
                     'status' => $done ? 'paused' : 'active',
                 ]);
 
-                // Update activity status to 'sent'
-                $this->logActivity($target, $parsedData, $thoughtStream, $responseText, $now);
+                // Save the AI reply to unified chat_messages
+                $this->logActivity($target, $session, $parsedData, $thoughtStream, $responseText, $now);
             }
         } catch (\Exception $e) {
             Log::error('[LeadMessageResultHandler] Execution Failed', [
@@ -91,23 +93,37 @@ class LeadMessageResultHandler implements WorkflowResultHandler
     /**
      * Create a human-readable audit log of the Agent's actions.
      */
-    protected function logActivity(Model $target, array $parsedData, array $thoughtStream, string $actualReply, $now = null): void
+    protected function logActivity(Model $target, \App\Models\LeadChatSession $session, array $parsedData, array $thoughtStream, string $actualReply, $now = null): void
     {
+        $aiChat = null;
+        if ($session->ai_chat_id) {
+            $aiChat = AiChat::find($session->ai_chat_id);
+        }
+        
+        if (!$aiChat) {
+            // Fallback if somehow not linked
+            $aiChat = AiChat::findOrCreateForTarget(
+                $target->tenant_id,
+                'lead',
+                $target->id,
+                $session->platform
+            );
+            $session->update(['ai_chat_id' => $aiChat->id]);
+        }
 
-        // We use bulk insert for performance
-        $activity = [
-            'lead_id' => $target->id,
-            'type' => 'ai_reply',
+        ChatMessage::create([
+            'ai_chat_id' => $aiChat->id,
+            'user_id' => null, // AI message
+            'role' => 'ai',
             'content' => $actualReply,
-            'metadata' => json_encode([
-                'role' => 'assistant',
+            'metadata' => [
                 'responseData' => $parsedData ?? [],
                 'thoughtStream' => $thoughtStream ?? [],
-            ]),
+            ],
             'created_at' => $now ?? now(),
             'updated_at' => $now ?? now(),
-        ];
+        ]);
 
-        LeadActivity::insert([$activity]);
+        // DEPRECATED: We no longer write 'ai_reply' to lead_activities.
     }
 }
