@@ -114,7 +114,7 @@ class WorkflowPayload implements Arrayable
         $goal = $agent->hydratePrompt();
 
         if (empty($goal)) {
-            $goal = $userQuery || 'No user query.';
+            $goal = $userQuery ?? 'No user query.';
         }
 
 
