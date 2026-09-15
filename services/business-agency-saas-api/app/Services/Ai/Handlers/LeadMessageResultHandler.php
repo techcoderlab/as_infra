@@ -124,6 +124,33 @@ class LeadMessageResultHandler implements WorkflowResultHandler
             'updated_at' => $now ?? now(),
         ]);
 
+        // ─────────────────────────────────────────────────────
+        // TIER 2 MEMORY: TRIGGER EPISODIC FACT EXTRACTION
+        // ─────────────────────────────────────────────────────
+        // We only want to memorize facts if we have a valid target (user/lead)
+        if ($aiChat->target_id && $aiChat->target_type) {
+
+            $lastUserMessage = ChatMessage::where('ai_chat_id', $aiChat->id)
+                ->where('role', 'user')
+                ->latest('id')
+                ->first();
+
+            // Package the most recent exchange
+            $recentTurns = [
+                ['role' => 'user', 'content' => $lastUserMessage->content],
+                ['role' => 'ai', 'content' => $actualReply],
+            ];
+
+            // Dispatch to the background queue so the user isn't kept waiting
+            \App\Jobs\ExtractEpisodicFactsJob::dispatch(
+                $aiChat->tenant_id,
+                $aiChat->target_id,
+                $aiChat->target_type,
+                $recentTurns,
+                (string) $lastUserMessage->id
+            )->onQueue('ai-heavy'); // Or whatever queue name you prefer
+        }
+
         // DEPRECATED: We no longer write 'ai_reply' to lead_activities.
     }
 }
