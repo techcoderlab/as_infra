@@ -37,9 +37,13 @@ class ProcessKnowledgeSourceJob implements ShouldQueue
             // Default to title
             $sourceRef = $this->knowledgeSource->title;
 
-            // Bypass Nginx symlink issues by using the internal PHP download route
+            // FIX: Only override the URL to the internal download route if it is actually an uploaded document
             if (!empty($this->knowledgeSource->source_url)) {
-                $sourceRef = 'http://gateway:80/api/internal/knowledge-sources/' . $this->knowledgeSource->id . '/download';
+                if ($this->knowledgeSource->source_type === 'document') {
+                    $sourceRef = 'http://gateway:80/api/internal/knowledge-sources/' . $this->knowledgeSource->id . '/download';
+                } else {
+                    $sourceRef = $this->knowledgeSource->source_url;
+                }
             }
 
             $response = Http::timeout(60)
@@ -51,7 +55,7 @@ class ProcessKnowledgeSourceJob implements ShouldQueue
                     'tenant_id' => $this->knowledgeSource->tenant_id,
                     'source_id' => $this->knowledgeSource->id,
                     'source_type' => $this->knowledgeSource->source_type,
-                    'source_ref' => $sourceRef, // Internal URL goes here
+                    'source_ref' => $sourceRef,
                     'content' => $this->knowledgeSource->content,
                 ]);
 

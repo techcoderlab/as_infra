@@ -14,6 +14,7 @@
 #     → (False) → merge_context → generate_response → END
 # ─────────────────────────────────────────────────────
 
+from services.strategies import anthropic_strategy
 import asyncio
 import json
 import time
@@ -28,6 +29,9 @@ from memory.working import get_working_context
 from services.strategies.factory import LLMStrategyFactory
 
 
+# module level in memory_graph.py
+NO_RESULTS = "No relevant knowledge found in the knowledge base for this query."
+
 # ─────────────────────────────────────────────────────
 # State Schema
 # ─────────────────────────────────────────────────────
@@ -38,7 +42,8 @@ class MemoryGraphState(TypedDict, total=False):
 
     Attributes:
         tenant_id: Mandatory tenant scope — validated at every node.
-        lead_id: Lead scope for episodic fact retrieval.
+        target_id: Target scope for episodic fact retrieval.
+        target_type: Target type for episodic fact retrieval.
         conversation_id: Conversation scope for working memory.
         user_query: The raw user message text.
         request_data: Full original request payload for the LLM strategy.
@@ -50,7 +55,8 @@ class MemoryGraphState(TypedDict, total=False):
         response_events: Collected stream events from the LLM strategy.
     """
     tenant_id: int
-    lead_id: int
+    target_id: int
+    target_type: str
     conversation_id: int
     user_query: str
     request_data: dict
@@ -96,14 +102,15 @@ async def load_context(state: MemoryGraphState) -> dict:
     Both calls are scoped strictly by tenant_id.
     """
     tenant_id = _require_tenant_id(state, "load_context")
-    lead_id = state.get("lead_id", 0)
+    target_id = state.get("target_id")
+    target_type = state.get("target_type")
     conversation_id = state.get("conversation_id", 0)
 
-    mcp_logger.info(f"[MemoryGraph:load_context] tenant={tenant_id} lead={lead_id} conv={conversation_id}")
+    mcp_logger.info(f"[MemoryGraph:load_context] tenant={tenant_id} target={target_id} {target_type} conv={conversation_id}")
 
     # P3 Concurrency: Run both I/O-bound operations in parallel using native coroutines
     episodic_facts, working_context = await asyncio.gather(
-        get_active_facts(tenant_id, lead_id) if lead_id else _empty_list(),
+        get_active_facts(tenant_id, target_id, target_type) if target_id else _empty_list(),
         get_working_context(tenant_id, conversation_id) if conversation_id else _empty_working(),
     )
 
@@ -114,7 +121,7 @@ async def load_context(state: MemoryGraphState) -> dict:
 
 
 async def _empty_list() -> list:
-    """Returns an empty list for cases where lead_id is not provided."""
+    """Returns an empty list for cases where target_id is not provided."""
     return []
 
 async def _empty_working() -> dict:
@@ -185,9 +192,16 @@ async def call_rag(state: MemoryGraphState) -> dict:
 
     user_query = state.get("user_query", "")
     request_data = state.get("request_data", {})
-    agent_id = request_data.get("context", {}).get("global_data", {}).get("agent_id")
+    # agent_id = request_data.get("context", {}).get("global_data", {}).get("agent_id")
+    gd = request_data.get("context", {}).get("global_data", {})
 
     mcp_logger.info(f"[MemoryGraph:call_rag] tenant={tenant_id} query_len={len(user_query)}")
+
+
+    # CRITICAL FIX: forward the FULL global_data — the tool needs
+    # active_knowledge_source_ids to know which sources are searchable.
+    rag_context = {"global_data": {**gd, "tenant_id": tenant_id}}
+    # tenant_id re-asserted (int) so coercion state is guaranteed
 
     try:
         from tools.definitions.knowledge_search import KnowledgeSearchTool
@@ -195,18 +209,24 @@ async def call_rag(state: MemoryGraphState) -> dict:
         tool = KnowledgeSearchTool()
 
         # Construct the context dict matching KnowledgeSearchTool's extraction pattern
-        rag_context = {
-            "global_data": {
-                "tenant_id": tenant_id,
-                "agent_id": agent_id,
-            }
-        }
+        # rag_context = {
+        #     "global_data": {
+        #         "tenant_id": tenant_id,
+        #         "agent_id": agent_id,
+        #     }
+        # }
 
         result = await tool.run(
-            query=user_query,
-            top_k=5,
-            context=rag_context,
+            query=user_query, 
+            top_k=3, 
+            context=rag_context
         )
+
+        # result = await tool.run(
+        #     query=user_query,
+        #     top_k=5,
+        #     context=rag_context,
+        #)
 
         # Extract the text from the tool's response format
         rag_text = ""
@@ -276,13 +296,23 @@ async def merge_context(state: MemoryGraphState) -> dict:
 
     # 3. RAG Chunks (lowest priority)
     rag = state.get("rag_results", "")
-    if rag and rag != "No relevant knowledge found in the knowledge base for this query.":
-        rag_block = f"<knowledge_base>\n{rag}\n</knowledge_base>"
-        parts.append(rag_block)
+
+
+    if rag and rag != NO_RESULTS:
+        trimmed = [c.strip()[:1200] for c in rag.split("\n---\n")][:4]
+        parts.append(f"<knowledge_base>\n" + "\n---\n".join(trimmed) + "\n</knowledge_base>")
+
+
+    # if rag and rag != "No relevant knowledge found in the knowledge base for this query.":
+    #     rag_block = f"<knowledge_base>\n{rag}\n</knowledge_base>"
+    #     parts.append(rag_block)
 
     merged = "\n\n".join(parts) if parts else ""
 
-    mcp_logger.info(f"[MemoryGraph:merge_context] merged_len={len(merged)} facts={len(facts)} has_summary={bool(summary)} has_rag={bool(rag)}")
+    mcp_logger.info(
+        f"[MemoryGraph:merge_context] merged_len={len(merged)} facts={len(facts)} "
+        f"has_summary={bool(summary)} has_rag={bool(rag) and rag != NO_RESULTS}"
+    )
 
     return {"merged_context": merged}
 
@@ -290,6 +320,8 @@ async def merge_context(state: MemoryGraphState) -> dict:
 # ─────────────────────────────────────────────────────
 # Node 5: Generate Response
 # ─────────────────────────────────────────────────────
+
+
 async def generate_response(state: MemoryGraphState) -> dict:
     """
     Injects active tools and the merged memory context into the system prompt,
@@ -301,6 +333,7 @@ async def generate_response(state: MemoryGraphState) -> dict:
     Returns:
         dict: State update with response_events list.
     """
+    
     _require_tenant_id(state, "generate_response")
 
     request_data = state.get("request_data", {})
@@ -309,7 +342,10 @@ async def generate_response(state: MemoryGraphState) -> dict:
     # 1. Active Tools Format Injection (Fixes "missing tool" refusal)
     from tools.registry import get_tools
     requested_tools = request_data.get("tools", [])
-    tools = get_tools(requested_tools)
+    # Removing the search tool makes behavior deterministic and cuts ~10 s.
+    # tools = get_tools(requested_tools)
+    tools = [t for t in get_tools(requested_tools)
+             if t.name != "search_knowledge_base"]
 
     available_tools_list = ", ".join([t.name for t in tools]) if tools else "NONE"
     
@@ -322,23 +358,34 @@ async def generate_response(state: MemoryGraphState) -> dict:
     # 2. Memory Context & Guardrails Injection
     original_system_prompt = request_data.get("systemPrompt", "")
     rag = state.get("rag_results", "")
-    rag_no_match = "No relevant knowledge" in rag
     
     rag_no_match_instruction = (
         "\n[RAG INSTRUCTION]\n"
-        "The user requested information that requires reference documentation, but no relevant documents were found. "
-        "You MUST plainly state: 'I don't have that information on file.' Do not attempt to guess or hallucinate an answer.\n"
-        if rag_no_match
-        else "\n[RAG INSTRUCTION]\nUse the reference documentation provided in <knowledge_base> to answer the user's query if applicable.\n"
+        "No matching knowledge-base documents were found for this query.\n"
+        "- If the question is about internal documents, policies, or records: say you "
+        "don't have that information in memory and offer alternatives.\n"
+        "- For greetings, general conversation, or anything answerable without the "
+        "knowledge base: answer normally using your own knowledge and the memory context.\n"
+    )
+
+    memory_rules = (
+        "\n[MEMORY USAGE RULES]\n"
+        "- <episodic_memory> contains facts the USER stated about themselves. Use only for personalization.\n"
+        "- <knowledge_base> contains reference documents. Ground all business/product answers in it.\n"
+        "- If <knowledge_base> and any memory content disagree about the business, the knowledge base wins.\n"
+        "- IMPORTANT: user_name / user_id in <context_data> identify the person CURRENTLY CHATTING — "
+        "they are NOT the business owner and must never be presented as company personnel.\n"
+        "- ANSWER THE USER'S LATEST MESSAGE directly. NEVER repeat a previous answer verbatim.\n"
     )
 
     memory_injection = ""
     if merged_context:
         memory_injection = (
             f"\n{rag_no_match_instruction}\n"
-            "[MEMORY CONTEXT — Use this information to personalize your response]\n"
+            "[MEMORY CONTEXT]\n"
             f"{merged_context}\n"
             "[END MEMORY CONTEXT]\n"
+            f"{memory_rules}"
         )
 
     # Combine instructions: original prompt + active tools + RAG/Memory rules
@@ -352,10 +399,23 @@ async def generate_response(state: MemoryGraphState) -> dict:
     history = request_data.get("history", [])
     user_prompt = request_data.get("userPrompt", "")
     context = request_data.get("context", {})
-    output_format = request_data.get("output_format", "json")
+    # output_format = request_data.get("output_format", "json")
+    output_format = request_data.get("output_format", "text")
     thinking_budget = request_data.get("thinking_budget", 0)
     use_stream = request_data.get("use_stream", False)
     max_iterations = request_data.get("max_iterations", 7)
+
+
+    tool_configs = request_data.get('tool_configs', {})
+    # MERGE Configs into Context
+    if tool_configs:
+            # Ensure 'tool_configs' key exists in context
+        if 'tool_configs' not in context:
+            context['tool_configs'] = {}
+        
+        # Merge incoming configs
+        context['tool_configs'].update(tool_configs)
+
 
     strategy = LLMStrategyFactory.get_strategy(provider)
 
@@ -364,7 +424,7 @@ async def generate_response(state: MemoryGraphState) -> dict:
         api_key=api_key,
         model=model,
         system_prompt=system_prompt,
-        effective_history=history,
+        effective_history=[],
         full_user_message=f"<context_data>\n{json.dumps(context, indent=2)}\n</context_data>\n\n<user_input>\n{user_prompt}\n</user_input>",
         tools=tools,
         context=context,
@@ -375,6 +435,9 @@ async def generate_response(state: MemoryGraphState) -> dict:
     ):
         events.append(event)
 
+    mcp_logger.info(
+        f"[MemoryGraph:generate_response] has_rag={bool(rag) and rag != NO_RESULTS}"
+    )
     return {"response_events": events}
 # ─────────────────────────────────────────────────────
 # Graph Construction
@@ -444,7 +507,7 @@ async def run_memory_graph(request_data: dict):
 
     Parameters:
         request_data: The full agent request payload dict. Must contain
-                      tenant_id, lead_id, and conversation_id in context.
+                      tenant_id, target_id, target_type, and conversation_id in context.
 
     Yields:
         dict: Stream events (token, tool_start, tool_end, error).
@@ -453,19 +516,21 @@ async def run_memory_graph(request_data: dict):
     global_data = context.get("global_data", {})
 
     tenant_id = global_data.get("tenant_id") or context.get("tenant_id")
-    lead_id = global_data.get("lead_id") or context.get("lead_id")
+    target_id = global_data.get("target_id") or context.get("target_id")
+    target_type = global_data.get("target_type") or context.get("target_type")
     conversation_id = global_data.get("conversation_id") or context.get("conversation_id")
 
     if not tenant_id:
         yield {"type": "error", "data": "Memory graph requires tenant_id in context"}
         return
 
-    mcp_logger.info(f"[MemoryGraph] Starting | tenant={tenant_id} lead={lead_id} conv={conversation_id}")
+    mcp_logger.info(f"[MemoryGraph] Starting | tenant={tenant_id} target={target_id} {target_type} conv={conversation_id}")
     start = time.monotonic()
 
     initial_state: MemoryGraphState = {
         "tenant_id": int(tenant_id),
-        "lead_id": int(lead_id) if lead_id else 0,
+        "target_id": int(target_id) if target_id else 0,
+        "target_type": str(target_type).lower() if target_type else "",
         "conversation_id": int(conversation_id) if conversation_id else 0,
         "user_query": request_data.get("userPrompt", ""),
         "request_data": request_data,
@@ -489,5 +554,8 @@ async def run_memory_graph(request_data: dict):
         mcp_logger.info(f"[MemoryGraph] Completed | tenant={tenant_id} duration={duration_ms:.2f}ms")
 
     except Exception as e:
-        mcp_logger.error(f"[MemoryGraph] Failed | tenant={tenant_id} error={str(e)}")
+        mcp_logger.error(
+            f"[MemoryGraph] Failed | tenant={tenant_id} error={e}",
+            exc_info=True,   # ← full traceback with file:line
+        )
         yield {"type": "error", "data": str(e)}

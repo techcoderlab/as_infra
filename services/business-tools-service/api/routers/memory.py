@@ -26,7 +26,8 @@ class TurnDTO(BaseModel):
 
 class ExtractFactsRequest(BaseModel):
     tenant_id: int = Field(..., description="The ID of the tenant")
-    lead_id: int = Field(..., description="The ID of the lead")
+    target_id: str | int = Field(..., description="The ID of the target")
+    target_type: str = Field(..., description="The type of the target")
     recent_turns: List[TurnDTO] = Field(..., description="The recent conversation turns to extract facts from")
     source_turn_id: Optional[str] = Field(None, description="Optional ID of the chat message that triggered this")
 
@@ -40,7 +41,8 @@ class ExtractFactsResponse(BaseModel):
 class SummarizeRequest(BaseModel):
     tenant_id: int = Field(..., description="The ID of the tenant")
     conversation_id: int = Field(..., description="The ID of the conversation (ai_chat_id)")
-    lead_id: int = Field(..., description="The ID of the lead")
+    target_id: str | int = Field(..., description="The ID of the target")
+    target_type: str = Field(..., description="The type of the target")
 
 class SummarizeResponse(BaseModel):
     success: bool
@@ -102,25 +104,38 @@ async def _extract_text(url: str) -> str:
         mcp_logger.error(f"[SemanticMemory] Unexpected error downloading file {safe_url}: {e}")
         raise ValueError(f"Failed to download file {safe_url}: {e}")
         
-        
     ext = safe_url.split('.')[-1].lower() if '.' in safe_url else 'txt'
+    content_type = response.headers.get('content-type', '').lower()
     
-    if 'pdf' in ext or 'pdf' in response.headers.get('content-type', '').lower():
+    if 'pdf' in ext or 'pdf' in content_type:
         import pypdf
         import io
         pdf_reader = pypdf.PdfReader(io.BytesIO(response.content))
         return "\n".join(page.extract_text() for page in pdf_reader.pages if page.extract_text())
         
-    elif 'doc' in ext or 'docx' in ext or 'word' in response.headers.get('content-type', '').lower():
+    elif 'doc' in ext or 'docx' in ext or 'word' in content_type:
         import docx
         import io
         doc = docx.Document(io.BytesIO(response.content))
         return "\n".join(paragraph.text for paragraph in doc.paragraphs)
         
+    elif 'html' in ext or 'htm' in ext or 'html' in content_type:
+        from bs4 import BeautifulSoup
+        
+        # Parse HTML and extract clean text
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remove noisy tags that don't contribute to semantic memory
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
+            tag.decompose()
+            
+        # Join stripped strings to remove excessive whitespace
+        return ' '.join(soup.stripped_strings)
+        
     else:
         # Fallback to plain text
         return response.content.decode('utf-8', errors='ignore')
-
+        
 
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest_endpoint(request: IngestRequest, background_tasks: BackgroundTasks):
@@ -176,13 +191,14 @@ async def extract_facts_endpoint(request: ExtractFactsRequest):
     Extracts facts from recent chat turns and upserts them into episodic memory.
     """
     try:
-        mcp_logger.info(f"[MemoryRouter] Extract facts request | tenant={request.tenant_id} lead={request.lead_id}")
+        mcp_logger.info(f"[MemoryRouter] Extract facts request | tenant={request.tenant_id} target_type={request.target_type} target_id={request.target_id}")
         
         # 1. Extract facts using LLM
         turns = [turn.model_dump() for turn in request.recent_turns]
         facts = await extract_facts(
             tenant_id=request.tenant_id,
-            lead_id=request.lead_id,
+            target_id=request.target_id,
+            target_type=request.target_type,
             recent_turns=turns
         )
         
@@ -197,7 +213,8 @@ async def extract_facts_endpoint(request: ExtractFactsRequest):
         for fact in facts:
             result = await upsert_fact(
                 tenant_id=request.tenant_id,
-                lead_id=request.lead_id,
+                target_id=request.target_id,
+                target_type=request.target_type,
                 fact_type=fact["fact_type"],
                 fact_value=fact["fact_value"],
                 confidence=fact.get("confidence", 1.0),
@@ -238,7 +255,9 @@ async def summarize_endpoint(request: SummarizeRequest):
         summary_text = await summarize_conversation(
             tenant_id=request.tenant_id,
             conversation_id=request.conversation_id,
-            lead_id=request.lead_id
+            target_id=request.target_id,
+            target_type=request.target_type,
+            
         )
         
         return SummarizeResponse(

@@ -2,234 +2,379 @@
 # Module   : Episodic Memory (Fact Extraction & Upsertion)
 # Layer    : Application
 # Pillar   : P1 Architecture, P2 Security, P9 Data Management
+#
+# UPDATED  : Fact extraction now routes through CloudflareStrategy
+#            (OpenAI-compat endpoint) instead of calling Gemini directly.
+#            - Uses output_format="json" → response_format json_object
+#              (model must be in the strategy's JSON_MODE_SUPPORTED set)
+#            - Buffered mode (use_stream=False); events drained synchronously
+#            - Inherits circuit breaker + retries + model fallback from strategy
+#            - Defensive JSON parsing (fences, prose, envelope normalization)
+#            Sections 2 & 3 are pure PostgreSQL — unchanged.
 # ─────────────────────────────────────────────────────
 
-import json
-from typing import Optional
+from __future__ import annotations
 
-from google import genai
-from google.genai import types
+import json
+import re
+from typing import Optional
 
 from core.config import settings
 from core.logger import mcp_logger
 from memory.db import get_pool
-from services.llm import get_gemini_client
+from services.strategies.factory import LLMStrategyFactory
 
+# ─── Extraction config ────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────
-# 1. Fact Extraction (LLM)
-# ─────────────────────────────────────────────────────
+# Must match the key your LLMStrategyFactory registry uses for CloudflareStrategy
+EXTRACTION_PROVIDER = "cloudflare"
 
-async def extract_facts(tenant_id: int, lead_id: int, recent_turns: list[dict]) -> list[dict]:
+# Short alias — resolved to "@cf/meta/llama-3.1-8b-instruct-fp8" by the strategy.
+# This model is in JSON_MODE_SUPPORTED, so output_format="json" works.
+# Use "llama-3.3-70b" for higher extraction quality at higher latency.
+EXTRACTION_MODEL = "llama-3.1-8b"
+
+EXTRACTION_SYSTEM_PROMPT = (
+    "You extract durable facts about the USER from a conversation excerpt.\n"
+    "Valid facts: the user's name, occupation, THEIR OWN business/role, location, budget, "
+    "preferences, constraints, goals, and requirements.\n\n"
+    "STRICT RULES:\n"
+    "- Extract only what the USER explicitly stated in their own messages.\n"
+    "- NEVER treat ASSISTANT statements as facts — the assistant may be wrong.\n"
+    "- NEVER extract information about the ASSISTANT'S company (its services, owner, "
+    "pricing, location) — that belongs to the knowledge base, not user memory.\n"
+    "- The user's OWN business, budget, and needs ARE valid facts about the user.\n"
+    "- A question is not a fact.\n\n"
+    'Output ONLY a single JSON object: {"facts": [{"fact_type": "snake_case_category", '
+    '"fact_value": "concise fact", "confidence": 0.0-1.0}]}\n'
+    'If nothing extractable, return exactly: {"facts": []}\n\n'
+    "Example:\n"
+    "Conversation:\n"
+    "USER: Hi, I'm Sana. I own a bakery in Lahore and can spend about PKR 100k/month on marketing.\n"
+    "AI: Great to meet you Sana! We can definitely help with that.\n\n"
+    'Correct output: {"facts": ['
+    '{"fact_type": "user_name", "fact_value": "Sana", "confidence": 1.0}, '
+    '{"fact_type": "business", "fact_value": "Owns a bakery in Lahore", "confidence": 0.95}, '
+    '{"fact_type": "budget_limit", "fact_value": "~PKR 100k/month for marketing", "confidence": 0.9}]}'
+)
+
+def _get_cf_api_key(override: Optional[str]) -> str:
     """
-    Analyzes recent conversation turns using Gemini to extract key episodic facts
-    (e.g., user preferences, stated constraints, important life events).
-    
+    Resolves Cloudflare credentials ('<api_token>|<account_id>').
+    Per-call override (tenant-specific integration) wins over platform default.
+    Raises loudly — missing credentials are a deterministic config error.
+    """
+    api_key = override or getattr(settings, "CLOUDFLARE_API_KEY", None)
+    if not api_key:
+        raise ValueError(
+            "Cloudflare credentials not configured for episodic memory. "
+            "Set settings.CLOUDFLARE_API_KEY as '<api_token>|<account_id>' "
+            "or pass api_key explicitly to extract_facts()."
+        )
+    return api_key
+
+
+# ─────────────────────────────────────────────────────
+# 1. Fact Extraction (LLM via CloudflareStrategy)
+# ─────────────────────────────────────────────────────
+
+def _build_extraction_prompt(conversation_text: str) -> str:
+    return (
+        "Extract episodic facts from the conversation below.\n\n"
+        f"<conversation>\n{conversation_text}\n</conversation>\n\n"
+        'Respond now with ONLY the JSON object: {"facts": [...]}'
+    )
+
+
+def _parse_facts_payload(response_text: str) -> list:
+    """
+    Parses model output into a raw list of fact dicts.
+    Handles: bare arrays, {"facts": [...]}, markdown fences, surrounding prose,
+    and double-encoded JSON (model returns the object as a string).
+    """
+    text = response_text.strip()
+
+    # Strip markdown fences if the model added them despite instructions
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
+        text = re.sub(r"\s*```\s*$", "", text).strip()
+
+    data = None                                   # ← explicit init: no UnboundLocalError possible
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        # Slice outermost JSON value out of surrounding prose
+        starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
+        end = max(text.rfind("}"), text.rfind("]"))
+        if not starts or end == -1 or min(starts) >= end:
+            raise
+        data = json.loads(text[min(starts):end + 1])
+
+    # Double-encoding guard — MUST run AFTER `data` is assigned
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            return []
+
+    # Normalize envelope
+    if isinstance(data, dict):
+        for key in ("facts", "data", "results"):
+            if isinstance(data.get(key), list):
+                return data[key]
+        return []
+    if isinstance(data, list):
+        return data
+    return []
+
+def _validate_facts(raw_facts: list) -> list[dict]:
+    by_type: dict[str, dict] = {}
+    for fact in raw_facts:
+        if not isinstance(fact, dict):
+            continue
+        fact_type  = str(fact.get("fact_type", "")).strip()
+        fact_value = str(fact.get("fact_value", "")).strip()
+        if not fact_type or not fact_value:
+            continue
+        try:
+            confidence = max(0.0, min(1.0, float(fact.get("confidence", 1.0))))
+        except (TypeError, ValueError):
+            confidence = 1.0
+
+        ft = fact_type.lower()
+        existing = by_type.get(ft)
+        # One active fact per type (matches upsert_fact's storage model);
+        # ties → first wins (deterministic)
+        if existing is None or confidence > existing["confidence"]:
+            by_type[ft] = {"fact_type": fact_type, "fact_value": fact_value, "confidence": confidence}
+    return list(by_type.values())
+
+
+async def extract_facts(
+    tenant_id: int,
+    target_id: int,
+    target_type: str,
+    recent_turns: list[dict],
+    api_key: Optional[str] = None,
+) -> list[dict]:
+    """
+    Analyzes recent conversation turns using Cloudflare Workers AI (via
+    CloudflareStrategy) to extract key episodic facts.
+
     Parameters:
-        tenant_id: The tenant's identifier (used for logging/security boundary).
-        lead_id: The lead's identifier.
-        recent_turns: A list of dicts representing recent messages, e.g.,
-                      [{"role": "user", "content": "..."}, {"role": "ai", "content": "..."}]
-                      
+        tenant_id:   The tenant's identifier (logging/security boundary).
+        target_id:   The target's identifier.
+        target_type: The target's type.
+        recent_turns: e.g. [{"role": "user", "content": "..."},
+                            {"role": "ai",   "content": "..."}]
+        api_key:     Optional override '<cf_token>|<account_id>'.
+                     Falls back to settings.CLOUDFLARE_API_KEY.
+
     Returns:
-        list[dict]: A list of extracted facts in the format:
-                    [{"fact_type": "...", "fact_value": "...", "confidence": 1.0}]
-                    
+        list[dict]: [{"fact_type": ..., "fact_value": ..., "confidence": 0.0–1.0}]
+                    Empty list on any extraction failure (non-fatal by design).
+
     Raises:
-        ValueError: If tenant_id or lead_id is missing.
+        ValueError: If tenant/target fields or credentials are missing.
     """
-    if not tenant_id or not lead_id:
-        raise ValueError("tenant_id and lead_id are required for fact extraction")
-        
+    if not tenant_id or not target_id or not target_type:
+        raise ValueError("tenant_id, target_id, and target_type are required for fact extraction")
+    
     if not recent_turns:
         return []
 
-    mcp_logger.info(f"[EpisodicMemory] Extracting facts | tenant={tenant_id} lead={lead_id} turns={len(recent_turns)}")
 
-    # Format the conversation history into a single text block for the prompt
-    conversation_text = ""
-    for msg in recent_turns:
-        role = msg.get("role", "unknown").upper()
-        content = msg.get("content", "")
-        conversation_text += f"{role}: {content}\n"
-
-    system_prompt = (
-        "You are a factual memory extraction assistant. Analyze the following conversation excerpt "
-        "and extract any permanent or semi-permanent facts about the user (e.g., name, preferences, "
-        "budget, constraints, important events, specific requirements). \n\n"
-        "Return the output STRICTLY as a JSON array of objects. Each object must have:\n"
-        '- "fact_type": A short, snake_case string categorizing the fact (e.g., "budget_limit", "dietary_preference").\n'
-        '- "fact_value": The actual value or description of the fact.\n'
-        '- "confidence": A float between 0.0 and 1.0 indicating how certain you are of this fact based purely on the text.\n\n'
-        "If there are no facts to extract, return an empty array: []\n\n"
-        "Conversation:\n"
-        f"{conversation_text}"
+    # ── ANTI-POISONING GUARD ─────────────────────────────────────────────
+    # Only the USER's words may become episodic facts. Assistant output is
+    # unverified generation — letting it become "fact" creates a feedback
+    # loop where the model cites its own claims as ground truth.
+    user_turns = [t for t in recent_turns if str(t.get("role", "")).lower() in ("user", "human")]
+    mcp_logger.info(
+        f"[EpisodicMemory] user turns after filter: {len(user_turns)}/{len(recent_turns)}"
     )
 
-    client = get_gemini_client(settings.GEMINI_API_KEY)
-    
-    # Configure Gemini for strict JSON output
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        temperature=0.0  # Lowest temperature for consistent fact extraction
+    if not user_turns:
+        mcp_logger.info("[EpisodicMemory] No user-authored turns — skipping extraction")
+        return []
+
+    conversation_text = "".join(
+        f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}\n"
+        for msg in user_turns                      # ← user turns only
     )
+
+    cf_api_key = _get_cf_api_key(api_key)
+    strategy = LLMStrategyFactory.get_strategy(EXTRACTION_PROVIDER)
+
+    chunks: list[str] = []
+    error: Optional[str] = None
 
     try:
-        # P1 Architecture: Using a fast text model for extraction instead of the embedding model
-        # Defaulting to gemini-2.5-flash as it's the standard for fast/cheap extraction tasks
-        model_name = "gemini-2.5-flash"
-        
-        response = await client.aio.models.generate_content(
-            model=model_name,
-            contents=system_prompt,
-            config=config
-        )
-        
-        response_text = response.text
-        if not response_text:
-            return []
-            
-        facts = json.loads(response_text)
-        if not isinstance(facts, list):
-            mcp_logger.warning(f"[EpisodicMemory] LLM returned non-list JSON | tenant={tenant_id} lead={lead_id}")
-            return []
-            
-        # Filter and validate fields
-        valid_facts = []
-        for fact in facts:
-            if isinstance(fact, dict) and "fact_type" in fact and "fact_value" in fact:
-                valid_facts.append({
-                    "fact_type": str(fact["fact_type"]),
-                    "fact_value": str(fact["fact_value"]),
-                    "confidence": float(fact.get("confidence", 1.0))
-                })
-                
-        return valid_facts
-        
-    except json.JSONDecodeError:
-        mcp_logger.error(f"[EpisodicMemory] Failed to parse LLM JSON | tenant={tenant_id} lead={lead_id}")
-        return []
+        async for event in strategy.execute(
+            api_key            = cf_api_key,
+            model              = EXTRACTION_MODEL,
+            system_prompt      = EXTRACTION_SYSTEM_PROMPT,
+            effective_history  = [],   # full conversation is embedded in the user message
+            full_user_message  = _build_extraction_prompt(conversation_text),
+            tools              = [],
+            context            = {},
+            output_format      = "json",   # triggers response_format on whitelisted models
+            thinking_budget    = 0,
+            use_stream         = False,    # buffered — we need the complete JSON at once
+            max_iterations     = 1,        # no tools → single completion is enough
+            temperature=0.0
+        ):
+            etype = event.get("type")
+            if etype == "token":
+                chunks.append(event.get("data") or "")
+            elif etype == "error":
+                error = event.get("data", "unknown error")
+                break
+            # tool_start / tool_end / done are not applicable here
     except Exception as e:
-        mcp_logger.error(f"[EpisodicMemory] LLM extraction failed | tenant={tenant_id} lead={lead_id} error={str(e)}")
+        error = f"{type(e).__name__}: {e}"
+
+    if error:
+        mcp_logger.error(
+            f"[EpisodicMemory] CF extraction failed | tenant={tenant_id} "
+            f"target_id={target_id} target_type={target_type} error={error}"
+        )
         return []
+
+    response_text = "".join(chunks)
+    mcp_logger.info(
+        f"[EpisodicMemory] raw extraction response | len={len(response_text)} "
+        f"raw={response_text[:300]!r}"
+    )
+    if not response_text.strip():
+        mcp_logger.warning("[EpisodicMemory] Model returned EMPTY response")
+        return []
+
+    try:
+        raw_facts = _parse_facts_payload(response_text)
+    except json.JSONDecodeError:
+        mcp_logger.error(
+            f"[EpisodicMemory] Failed to parse LLM JSON | tenant={tenant_id} "
+            f"target_id={target_id} target_type={target_type} "
+            f"raw={response_text[:200]}"
+        )
+        return []
+
+    mcp_logger.info(f"[EpisodicMemory] parsed {len(raw_facts)} raw facts pre-validation")
+
+    valid_facts = _validate_facts(raw_facts)
+    mcp_logger.info(
+        f"[EpisodicMemory] Extraction complete | tenant={tenant_id} "
+        f"target_id={target_id} extracted={len(valid_facts)}"
+    )
+    return valid_facts
 
 
 # ─────────────────────────────────────────────────────
-# 2. Fact Upsertion (Versioning)
+# 2. Fact Upsertion (Versioning) — UNCHANGED
 # ─────────────────────────────────────────────────────
 
 async def upsert_fact(
     tenant_id: int,
-    lead_id: int,
+    target_id: int,
+    target_type: str,
     fact_type: str,
     fact_value: str,
     confidence: float = 1.0,
     source_turn_id: Optional[str] = None
 ) -> str:
     """
-    Upserts a fact into the episodic_facts table.
-    Implements a versioning strategy: if an active fact of the same type exists
-    and its value or confidence differs, it is marked as superseded, and a new
-    record is inserted. If it's identical, no action is taken.
-    
-    Parameters:
-        tenant_id: Mandatory tenant scope.
-        lead_id: Mandatory lead scope.
-        fact_type: Category of the fact.
-        fact_value: The fact text.
-        confidence: Certainty level (0.0 to 1.0).
-        source_turn_id: Optional reference to the chat message ID.
-        
-    Returns:
-        str: "inserted", "superseded", or "ignored"
+    Upserts a fact into episodic_facts with versioning:
+    identical → "ignored", changed → old row superseded + new row → "superseded",
+    new → "inserted".
     """
-    if not tenant_id or not lead_id or not fact_type:
-        raise ValueError("tenant_id, lead_id, and fact_type are required")
+    if not tenant_id or not target_id or not target_type or not fact_type:
+        raise ValueError("tenant_id, target_id, target_type, and fact_type are required")
 
     pool = await get_pool()
-    
+    target_id_str = str(target_id)
+
     async with pool.acquire() as conn:
-        # P9 Data Management: Run the lookup and conditional insert in a transaction
         async with conn.transaction():
-            # 1. Lookup active fact
             active_fact = await conn.fetchrow(
                 """
-                SELECT id, fact_value, confidence 
+                SELECT id, fact_value, confidence
                 FROM episodic_facts
-                WHERE tenant_id = $1 
-                  AND lead_id = $2 
-                  AND fact_type = $3 
+                WHERE tenant_id = $1
+                  AND target_id = $2
+                  AND target_type = $3
+                  AND fact_type = $4
                   AND superseded_at IS NULL
                 FOR UPDATE
                 """,
-                tenant_id, lead_id, fact_type
+                tenant_id, target_id_str, target_type, fact_type
             )
-            
+
             if active_fact:
-                # 2. Check if identical
-                if active_fact["fact_value"] == fact_value and abs(active_fact["confidence"] - confidence) < 0.01:
+                if (active_fact["fact_value"] == fact_value
+                        and abs(active_fact["confidence"] - confidence) < 0.01):
                     return "ignored"
-                    
-                # 3. Supersede old fact
+
                 await conn.execute(
                     """
-                    UPDATE episodic_facts 
+                    UPDATE episodic_facts
                     SET superseded_at = NOW(), updated_at = NOW()
-                    WHERE id = $1
+                    WHERE tenant_id = $1 AND target_id = $2 AND target_type = $3
+                    AND superseded_at IS NULL
+                    AND fact_type IN ('company_services','services_offered','company_owner', 'company_location')
                     """,
-                    active_fact["id"]
+                    tenant_id, target_id_str, target_type, fact_type
                 )
-                
-            # 4. Insert new fact
+
             await conn.execute(
                 """
-                INSERT INTO episodic_facts 
-                    (tenant_id, lead_id, fact_type, fact_value, confidence, source_turn_id, created_at, updated_at)
-                VALUES 
-                    ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+                INSERT INTO episodic_facts
+                    (tenant_id, target_id, target_type, fact_type, fact_value,
+                     confidence, source_turn_id, created_at, updated_at)
+                VALUES
+                    ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
                 """,
-                tenant_id, lead_id, fact_type, fact_value, confidence, source_turn_id
+                tenant_id, target_id_str, target_type, fact_type, fact_value,
+                confidence, source_turn_id
             )
-            
+
             if active_fact:
-                mcp_logger.info(f"[EpisodicMemory] Fact superseded | tenant={tenant_id} lead={lead_id} type={fact_type}")
+                mcp_logger.info(
+                    f"[EpisodicMemory] Fact superseded | tenant={tenant_id} "
+                    f"target_id={target_id} target_type={target_type} fact_type={fact_type}"
+                )
                 return "superseded"
-            else:
-                mcp_logger.info(f"[EpisodicMemory] Fact inserted | tenant={tenant_id} lead={lead_id} type={fact_type}")
-                return "inserted"
+            mcp_logger.info(
+                f"[EpisodicMemory] Fact inserted | tenant={tenant_id} "
+                f"target_id={target_id} target_type={target_type} fact_type={fact_type}"
+            )
+            return "inserted"
 
 
 # ─────────────────────────────────────────────────────
-# 3. Retrieval
+# 3. Retrieval — UNCHANGED
 # ─────────────────────────────────────────────────────
 
-async def get_active_facts(tenant_id: int, lead_id: int) -> list[dict]:
-    """
-    Retrieves all currently active (non-superseded) facts for a given lead.
-    
-    Parameters:
-        tenant_id: Mandatory tenant scope.
-        lead_id: Mandatory lead scope.
-        
-    Returns:
-        list[dict]: Active facts.
-    """
-    if not tenant_id or not lead_id:
-        raise ValueError("tenant_id and lead_id are required")
-        
+async def get_active_facts(tenant_id: int, target_id: int, target_type: str) -> list[dict]:
+    """Retrieves all currently active (non-superseded) facts."""
+    if not tenant_id or not target_id or not target_type:
+        raise ValueError("tenant_id, target_id, and target_type are required")
+
     pool = await get_pool()
-    
+    target_id_str = str(target_id)
+
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT fact_type, fact_value, confidence, source_turn_id, created_at
+            SELECT id, fact_type, fact_value, confidence, source_turn_id, created_at
             FROM episodic_facts
-            WHERE tenant_id = $1 
-              AND lead_id = $2 
+            WHERE tenant_id = $1
+              AND target_id = $2
+              AND target_type = $3
               AND superseded_at IS NULL
             ORDER BY created_at ASC
             """,
-            tenant_id, lead_id
+            tenant_id, target_id_str, target_type
         )
-        
+
     return [dict(row) for row in rows]

@@ -30,7 +30,9 @@ class AiChatController extends Controller
             return AiAgent::select('id', 'slug', 'is_active')->latest()->get();
         });
 
-        $query = AiChat::select(['id', 'tenant_id', 'name', 'ai_agent_id', 'avatar_url', 'webhook_url', 'webhook_secret', 'welcome_message', 'target_type', 'target_id', 'platform', 'status'])->latest();
+        $query = AiChat::select(['id', 'tenant_id', 'name', 'ai_agent_id', 'avatar_url', 'webhook_url', 'webhook_secret', 'welcome_message', 'target_type', 'target_id', 'platform', 'status'])
+            // ->where('target_type', 'user')
+            ->latest();
 
         if ($request->has('target_type') && $request->has('target_id')) {
             $query->where('target_type', $request->query('target_type'))
@@ -53,11 +55,13 @@ class AiChatController extends Controller
             'webhook_secret' => 'nullable|string',
             'welcome_message' => 'nullable|string',
             'ai_agent_id' => 'nullable|exists:ai_agents,id',
-            'target_type' => 'nullable|string',
-            'target_id' => 'nullable|integer',
             'platform' => 'nullable|string',
             'status' => 'nullable|string',
         ]);
+
+        // Force secure values on the backend
+        $validated['target_type'] = 'user';
+        $validated['target_id'] = $request->user()->id; // Securely gets the logged-in user ID
 
         $chat = AiChat::create($validated);
 
@@ -98,13 +102,13 @@ class AiChatController extends Controller
     /**
      * Get Chat History with Pagination (Cursor-based)
      */
-public function history(Request $request, AiChat $aiChat)
+    public function history(Request $request, AiChat $aiChat)
     {
         // 1. Authorization secures access; if they can view the chat, they can view its messages.
         $this->authorize('view', $aiChat);
 
-        $limit = 25; 
-        $beforeId = $request->input('before_id'); 
+        $limit = 25;
+        $beforeId = $request->input('before_id');
 
         // 2. Build Query (Removed user_id check to allow lead messages)
         $query = ChatMessage::where('ai_chat_id', $aiChat->id)
@@ -132,10 +136,10 @@ public function history(Request $request, AiChat $aiChat)
         // 5. Transform for Deep Chat (Reverse to chronological: Old -> New)
         $formatted = $messages->reverse()->values()->map(function ($msg) {
             $m = [
-                'role' => $msg->role, 
+                'role' => $msg->role,
                 'text' => $msg->content
             ];
-            
+
             if ($msg->files) {
                 $m['files'] = $msg->files;
             }
@@ -395,6 +399,12 @@ public function history(Request $request, AiChat $aiChat)
             // Send connection signal
             echo 'data: ' . json_encode(['type' => 'connected']) . "\n\n";
 
+            $activeKnowledgeSourceIds = [];
+            if (config('services.mcp_sidecar.use_memory_graph', false)) {
+                $activeKnowledgeSourceIds = $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray();
+            }
+            $useMemoryGraph = count($activeKnowledgeSourceIds) > 0;
+
             // Execute Stream via Gateway
             try {
                 $response = $this->aiGateway->streamChat(
@@ -406,18 +416,19 @@ public function history(Request $request, AiChat $aiChat)
                         'chat_id' => $aiChat->id, // Pass ID for tool context
                         'current_date_time' => now()->toIso8601String(),
                         'agent_config' => [
-                            'use_memory_graph' => config('services.mcp_sidecar.use_memory_graph', false)
+                            'use_memory_graph' => $useMemoryGraph
                         ],
                         'global_data' => [
                             'tenant_id' => $aiChat->tenant_id,
-                            'conversation_id' => $aiChat->id,
-                            'lead_id' => $aiChat->lead_id,
                             'agent_id' => $aiChat->ai_agent_id,
-                            'active_knowledge_source_ids' => $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray(),
+                            'conversation_id' => $aiChat->id,
+                            'target_id' => $aiChat->target_id,
+                            'target_type' => $aiChat->target_type,
+                            'active_knowledge_source_ids' => $activeKnowledgeSourceIds,
                             'user_query' => $lastUserMessage->content,
                         ],
                     ],
-                    $history,
+                    !$useMemoryGraph ? $history : [],
                     $lastUserMessage->content
                 );
 
@@ -457,6 +468,29 @@ public function history(Request $request, AiChat $aiChat)
                         'role' => 'ai',
                         'content' => $fullAiText,
                     ]);
+
+                    // ─────────────────────────────────────────────────────
+                    // TIER 2 MEMORY: TRIGGER EPISODIC FACT EXTRACTION
+                    // ─────────────────────────────────────────────────────
+                    // We only want to memorize facts if we have a valid target (user/lead)
+                    if ($aiChat->target_id && $aiChat->target_type) {
+
+                        // Package the most recent exchange
+                        $recentTurns = [
+                            ['role' => 'user', 'content' => $lastUserMessage->content],
+                            ['role' => 'ai', 'content' => $fullAiText],
+                        ];
+
+                        // Dispatch to the background queue so the user isn't kept waiting
+                        \App\Jobs\ExtractEpisodicFactsJob::dispatch(
+                            $aiChat->tenant_id,
+                            $aiChat->target_id,
+                            $aiChat->target_type,
+                            $recentTurns,
+                            (string) $lastUserMessage->id
+                        )->onQueue('ai-heavy'); // Or whatever queue name you prefer
+                    }
+                    // ─────────────────────────────────────────────────────
                 }
                 echo 'data: ' . json_encode(['type' => 'done']) . "\n\n";
             } catch (\Exception $e) {

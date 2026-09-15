@@ -1,18 +1,38 @@
 # ─────────────────────────────────────────────────────
 # Module   : KnowledgeSearchTool
 # Layer    : Presentation (Tool Interface)
-# Pillar   : P1 Architecture, P2 Security
+# Pillar   : P1 Architecture, P2 Security, P4 Reliability
+#
+# FIXED    : LLM tool-call arguments are NOT runtime-validated against
+#            args_schema — asyncpg is strict, so every numeric argument is
+#            coerced defensively (LLMs frequently send 5 as "5").
+#            - _as_int moved to module level (instance method lacked `self`)
+#            - top_k coerced + clamped (prevents pathological scan sizes)
+#            - active_source_ids elements coerced (JSON round-trip → strings)
 # ─────────────────────────────────────────────────────
 
+from typing import Any, Optional
 from pydantic import BaseModel, Field
-from typing import Optional
+
 from tools.base import BaseTool
 from core.logger import mcp_logger
 from core.decorators import tool_timeout
 
 
+def _coerce_int(value: Any, field: str) -> int:
+    """
+    Runtime coercion for LLM/tool arguments. asyncpg rejects '5' for an
+    INTEGER parameter, and Pydantic args_schema does not validate at call time.
+    Raises ValueError with a safe, non-secret message.
+    """
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"{field} must be an integer, got: {value!r}")
+
+
 class KnowledgeSearchArgs(BaseModel):
-    """Arguments schema for the knowledge base search tool."""
+    """Arguments schema for the knowledge base search tool (LLM-facing contract)."""
 
     query: str = Field(
         ...,
@@ -20,7 +40,7 @@ class KnowledgeSearchArgs(BaseModel):
     )
     top_k: int = Field(
         5,
-        description="Maximum number of relevant text chunks to return.",
+        description="Maximum number of relevant text chunks to return (1-20).",
     )
 
 
@@ -40,12 +60,19 @@ class KnowledgeSearchTool(BaseTool):
     )
     args_schema = KnowledgeSearchArgs
 
+    # P2/P4: clamp LLM-controlled top_k — hard ceiling regardless of model output
+    MAX_TOP_K = 20
+
+    @staticmethod
+    def _tool_error(message: str) -> dict:
+        return {"isError": True, "content": {"type": "text", "text": message}}
+
     @tool_timeout(seconds=30)
     async def run(
         self,
         query: str,
         top_k: int = 5,
-        context: dict = None,
+        context: Optional[dict] = None,
         **kwargs,
     ):
         """
@@ -53,7 +80,7 @@ class KnowledgeSearchTool(BaseTool):
 
         Parameters:
             query: Natural-language query string.
-            top_k: Max results to return.
+            top_k: Max results to return (LLM-supplied — coerce + clamp).
             context: Execution context containing tenant_id and optional agent_id.
 
         Returns:
@@ -61,22 +88,28 @@ class KnowledgeSearchTool(BaseTool):
         """
         context = context or {}
 
-        # P2 Security: Extract tenant_id from context (same pattern as crm_read.py)
+        # P2 Security: tenant_id from context only — never from LLM arguments
         tenant_id = context.get("global_data", {}).get("tenant_id") or context.get("tenant_id")
 
         if not tenant_id:
             mcp_logger.error("[KnowledgeSearchTool] Missing Tenant Context. Aborting.")
-            return {
-                "isError": True,
-                "content": {
-                    "type": "text",
-                    "text": "Error: Missing Tenant Context. Cannot search without knowing which account to access.",
-                },
-            }
+            return self._tool_error(
+                "Error: Missing Tenant Context. Cannot search without knowing "
+                "which account to access."
+            )
 
-        # Extract active knowledge source IDs for filtering
+        # ── Runtime coercion (asyncpg is strictly typed; LLM args are not trusted) ──
+        try:
+            tenant_id = _coerce_int(tenant_id, "tenant_id")
+            top_k     = _coerce_int(top_k, "top_k")
+        except ValueError as e:
+            mcp_logger.error(f"[KnowledgeSearchTool] Argument coercion failed: {e}")
+            return self._tool_error("Invalid search parameters.")
+
+        top_k = max(1, min(top_k, self.MAX_TOP_K))
+
         active_source_ids = context.get("global_data", {}).get("active_knowledge_source_ids", [])
-        
+
         # Short-circuit if there are no active knowledge sources bound
         if not active_source_ids:
             return {
@@ -86,13 +119,22 @@ class KnowledgeSearchTool(BaseTool):
                 }
             }
 
+        # Coerce source IDs — JSON round-trips deliver them as ["3", "7"]
+        try:
+            active_source_ids = [
+                _coerce_int(sid, "active_knowledge_source_ids") for sid in active_source_ids
+            ]
+        except ValueError as e:
+            mcp_logger.error(f"[KnowledgeSearchTool] Source ID coercion failed: {e}")
+            return self._tool_error("Invalid knowledge source configuration.")
+
         try:
             # Lazy import to avoid loading sentence-transformers at module import time
             from memory.semantic import search_memories
 
             results = await search_memories(
-                tenant_id=int(tenant_id),
-                query=query,
+                tenant_id=tenant_id,
+                query=str(query),
                 active_source_ids=active_source_ids,
                 top_k=top_k,
             )
@@ -105,19 +147,10 @@ class KnowledgeSearchTool(BaseTool):
                     }
                 }
 
-            return {
-                "content": {
-                    "type": "text",
-                    "text": results,
-                }
-            }
+            return {"content": {"type": "text", "text": results}}
 
         except Exception as e:
-            mcp_logger.error(f"[KnowledgeSearchTool Error] {str(e)}")
-            return {
-                "isError": True,
-                "content": {
-                    "type": "text",
-                    "text": "Knowledge base search failed. The service may be temporarily unavailable.",
-                },
-            }
+            mcp_logger.error(f"[KnowledgeSearchTool Error] {type(e).__name__}: {e}")
+            return self._tool_error(
+                "Knowledge base search failed. The service may be temporarily unavailable."
+            )

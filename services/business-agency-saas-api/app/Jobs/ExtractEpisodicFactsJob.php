@@ -37,7 +37,8 @@ class ExtractEpisodicFactsJob implements ShouldQueue
     }
 
     protected int $tenantId;
-    protected int $leadId;
+    protected int|string $targetId; // Allow string if you use UUIDs for web sessions
+    protected string $targetType;
     protected array $recentTurns;
     protected ?string $sourceTurnId;
 
@@ -45,14 +46,16 @@ class ExtractEpisodicFactsJob implements ShouldQueue
      * Create a new job instance.
      *
      * @param int $tenantId
-     * @param int $leadId
+     * @param int $targetId
+     * @param string $targetType
      * @param array $recentTurns The recent conversation turns in format: [['role' => 'user', 'content' => '...'], ...]
      * @param string|null $sourceTurnId
      */
-    public function __construct(int $tenantId, int $leadId, array $recentTurns, ?string $sourceTurnId = null)
+    public function __construct(int $tenantId, int|string $targetId, string $targetType, array $recentTurns, ?string $sourceTurnId = null)
     {
         $this->tenantId = $tenantId;
-        $this->leadId = $leadId;
+        $this->targetId = $targetId;
+        $this->targetType = strtolower($targetType);
         $this->recentTurns = $recentTurns;
         $this->sourceTurnId = $sourceTurnId;
     }
@@ -74,16 +77,19 @@ class ExtractEpisodicFactsJob implements ShouldQueue
 
         $payload = [
             'tenant_id' => $this->tenantId,
-            'lead_id' => $this->leadId,
+            'target_id' => $this->targetId,
+            'target_type' => $this->targetType,
             'recent_turns' => $formattedTurns,
             'source_turn_id' => $this->sourceTurnId,
         ];
 
+
         $url = config('services.mcp_sidecar.url') . '/v1/memory/extract-facts';
-        
+
         Log::info('[EpisodicMemoryJob] Sending facts extraction request', [
             'tenant_id' => $this->tenantId,
-            'lead_id' => $this->leadId,
+            'target_id' => $this->targetId,
+            'target_type' => $this->targetType,
             'turns_count' => count($formattedTurns),
             'url' => $url,
         ]);
@@ -102,7 +108,7 @@ class ExtractEpisodicFactsJob implements ShouldQueue
                 'status' => $response->status(),
                 'response' => $response->body(),
             ]);
-            
+
             // Throw exception to trigger job retry
             $response->throw();
         }

@@ -111,6 +111,7 @@ const props = defineProps({
   }
 })
 
+
 const route = useRoute()
 const router = useRouter()
 const deepChatRef = ref(null)
@@ -124,6 +125,7 @@ const hasMoreMessages = ref(false)
 const isLoadingMore = ref(false)
 const connectionStatus = ref('checking')
 const agentState = ref('')
+const isReadonly = ref(props.readonly)
 
 const isDark = ref(document.documentElement.classList.contains('dark'))
 const abortController = ref(null)
@@ -233,28 +235,19 @@ function extractJsonValue(input) {
 
   try {
     const data = JSON.parse(input)
-
-    // Priority list of keys to look for
-    const keys = [
-      'response',
-      'text',
-      'result',
-      'output',
-      'content',
-      'message',
-      'reply',
-      'data',
-      'value',
-    ]
-
-    // Find the first key that exists in the object
+    const keys = ['response', 'text', 'result', 'output', 'content', 'message', 'reply', 'data', 'value']
     const foundKey = keys.find((key) => Object.prototype.hasOwnProperty.call(data, key))
+    const value = foundKey !== undefined ? data[foundKey] : data
 
-    // Return the value of the found key, or the whole object if no keys match
-    return foundKey !== undefined ? data[foundKey] : data
+    // Deep Chat requires `text` to be a STRING — coerce everything else
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) {
+      return value.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join('\n')
+    }
+    if (value !== null && typeof value === 'object') return JSON.stringify(value, null, 2)
+    return String(value ?? input)
   } catch (e) {
-    // Not valid JSON, return original input
-    return input
+    return input // plain text — pass through
   }
 }
 
@@ -264,113 +257,91 @@ function extractJsonValue(input) {
 // extractJsonValue('Just a plain string') -> "Just a plain string"
 
 const chatHandler = async (body, signals) => {
-  // 1. Create a local controller for this specific request
   const controller = new AbortController()
-
-  // DOCS: "triggered when the user clicks the stop button"
-  signals.stopClicked.listener = () => {
-    controller.abort()
-  }
+  signals.stopClicked.listener = () => controller.abort()
 
   agentState.value = 'Thinking...'
+
+  // v1 fix — let Deep Chat commit the user bubble to the DOM first
+  await new Promise((r) => setTimeout(r, 50))
+
+  let finalString = ''
+  let closed = false
+  const close = () => { if (!closed) { closed = true; signals.onClose() } }
 
   try {
     const userMessage = body.messages[0]
 
-    // Initial POST to prepare the message/thread
     const { data } = await request.post(`/ai-chats/${chatId}/message`, {
       text_content: userMessage.text,
     })
 
-    // Convert absolute URL to relative to ensure it goes through our Vite proxy
-    // This avoids CORS preflight issues with ngrok
     const streamUrl = new URL(data.stream_url)
-    const relativeUrl = streamUrl.pathname + streamUrl.search
-
-    // Start the Stream
-    const response = await fetch(relativeUrl, {
+    const response = await fetch(streamUrl.pathname + streamUrl.search, {
       method: 'GET',
-      headers: {
-        Accept: 'text/event-stream',
-      },
+      headers: { Accept: 'text/event-stream' },
       signal: controller.signal,
       credentials: 'include',
     })
-
     if (!response.ok || !response.body) throw new Error('Stream error')
 
-    // DOCS: "stops the loading bubble" - Call this ONLY when connection is valid
     signals.onOpen()
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    let finalString = ''
 
     while (true) {
       const { done, value } = await reader.read()
-
-      if (done) {
-        // DOCS: "The stop button will be changed back to submit button"
-        // signals.onResponse({ text: payload.data })
-        signals.onClose()
-        break
-      }
+      if (done) break
 
       buffer += decoder.decode(value, { stream: true })
-      // Split by double newline (standard SSE format)
       const lines = buffer.split(/\r?\n\r?\n/)
       buffer = lines.pop()
 
       for (const line of lines) {
         const cleanLine = line.trim()
         if (!cleanLine.startsWith('data:')) continue
-
         const jsonStr = cleanLine.replace(/^data:\s?/, '').trim()
-
-        // Handle specific "DONE" signals from your backend
-        if (jsonStr.includes('"type":"done"') || jsonStr === '[DONE]') {
-          // console.log('Stream Finished', finalString)
-          signals.onClose()
-          signals.onResponse({ text: extractJsonValue(finalString) })
-          // console.log(finalString)
-          return
-        }
-
-        // console.log('Clean Line:', cleanLine)
+        if (!jsonStr || jsonStr === '[DONE]') continue
 
         try {
           const payload = JSON.parse(jsonStr)
 
           if (payload.type === 'token') {
-            // DOCS: "adds text into the message bubble"
-            // We do NOT use overwrite: true. We just send the new chunk.
             finalString += payload.data
-            // signals.onResponse({ text: payload.data })
+            // KEY: cumulative text + overwrite → REPLACES bubble content
+            // each call instead of finalizing on the first call
+            // signals.onResponse({ text: finalString, overwrite: true })
+
+          } else if (payload.type === 'tool_start') {
+            agentState.value = `Using ${payload.data.tool}...`
+          } else if (payload.type === 'tool_end') {
+            agentState.value = 'Thinking...'
           } else if (payload.type === 'error') {
-            finalString += payload.data
-            signals.onResponse({ error: payload.data + ' please try again!' })
-            // signals.onResponse({ error: payload.data })
-            // console.error('Stream Error:', payload.data)
+            signals.onResponse({ error: payload.data })
+            close()
+            return
+          } else if (payload.type === 'done') {
+            signals.onResponse({ text: extractJsonValue(finalString) })
+            close()
             return
           }
-        } catch (e) {
-          // Ignore partial JSON parse errors
-        }
+        } catch { /* partial JSON / keep-alive */ }
       }
     }
+
+    // Stream ended without an explicit done event
+    signals.onResponse({ text: extractJsonValue(finalString) })
+    close()
   } catch (e) {
-    if (e.name === 'AbortError') {
-      // User clicked stop, clean up UI
-      signals.onClose()
-      return
-    }
+    if (e.name === 'AbortError') { close(); return }
+    console.error('Stream Error:', e)
     signals.onResponse({ error: 'AI Connection Failed' })
   } finally {
     agentState.value = ''
   }
 }
-
 // --- 2. INFINITE SCROLL LOGIC ---
 const setupScrollListener = () => {
   const element = deepChatRef.value
@@ -438,12 +409,14 @@ onMounted(async () => {
     const configRes = await request.get(`/ai-chats`)
     
     chatConfig.value = configRes.data.chats.find((c) => c.id == chatId)
+    // console.log(`chatConfig.value: ${JSON.stringify(chatConfig.value, null, 2)}`)
 
     const agt = configRes.data.agents.find((c) => c.id == chatConfig.value?.ai_agent_id)
     // console.log(`agt: ${JSON.stringify(agt, null, 2)}`)
 
-    props.readonly = (chatConfig.value?.target_type != null && chatConfig.value?.target_type != "") || agt?.is_active == false
+    // props.readonly = chatConfig.value?.target_type != 'user' || agt?.is_active !== true
 
+    isReadonly.value = chatConfig.value?.target_type != 'user' || agt?.is_active !== true
 
     const attachChat = () => {
       const el = deepChatRef.value

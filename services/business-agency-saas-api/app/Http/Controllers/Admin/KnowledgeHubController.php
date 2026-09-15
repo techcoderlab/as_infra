@@ -116,14 +116,6 @@ class KnowledgeHubController extends Controller
      */
     public function internalDownload(Request $request, $id)
     {
-        // // 1. Security Check: Validate Secret Token passed from Python Sidecar
-        // $token = $request->bearerToken() ?? $request->header('X-Internal-Secret');
-        // $expectedToken = config('services.mcp_sidecar.token');
-
-        // if (!$expectedToken || $token !== $expectedToken) {
-        //     return response()->json(['error' => 'Unauthorized internal access.'], 401);
-        // }
-
         // 2. Fetch Source Record
         $source = KnowledgeSource::findOrFail($id);
 
@@ -131,13 +123,20 @@ class KnowledgeHubController extends Controller
             return response()->json(['error' => 'No URL set for source.'], 404);
         }
 
+        // FIX: Add safeguard to ensure we only attempt to serve uploaded documents
+        if ($source->source_type !== 'document') {
+            return response()->json(['error' => 'Only documents can be downloaded internally.'], 400);
+        }
+
         // 3. Robust path extraction: Extract relative path after '/storage/'
         $parsedPath = parse_url($source->source_url, PHP_URL_PATH);
 
-        // Strip leading '/storage/' or 'storage/'
+        // Strip leading '/storage/' or 'storage/' and any trailing/leading slashes
         $relativePath = preg_replace('#^/?storage/#', '', $parsedPath);
+        $relativePath = trim($relativePath, '/');
 
-        if (!Storage::disk('public')->exists($relativePath)) {
+        // FIX: Ensure $relativePath isn't empty (which would make exists() evaluate the root directory)
+        if (empty($relativePath) || !Storage::disk('public')->exists($relativePath)) {
             return response()->json([
                 'error' => 'File not found on public storage disk.',
                 'debug_path' => $relativePath

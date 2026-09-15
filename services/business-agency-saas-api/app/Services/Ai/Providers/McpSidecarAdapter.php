@@ -44,99 +44,93 @@ class McpSidecarAdapter implements LlmProviderInterface
     {
 
         $timestamp = time();
-
         $url = rtrim($this->baseUrl, '/') . '/v1/agent/enqueue';
-
         $jobUuid = $payload->getTempValue('job_uuid') ?? (string) Str::uuid();
 
-
-        // 1. FAST CLEANUP & JSON (The Logic we optimized earlier)
-
+        $useMemoryGraph = $payload->context['agent_config']['use_memory_graph'] ?? false;
+        // 1. FAST CLEANUP & DATA CONSTRUCTION
         $data = [
-
             'job_uuid' => $jobUuid,
-
             'webhook_url' => config('services.mcp_sidecar.webhook_base_url') . '/api/mcp/callback/ai-result',
-
             'provider' => $payload->context['agent_config']['provider'],
-
             'apiKey' => $payload->context['agent_config']['api_key'],
-
             'model' => $payload->context['agent_config']['model'],
-
             'systemPrompt' => $payload->context['agent_config']['system_prompt'],
-
             'userPrompt' => $payload->goal,
-
             'context' => $payload->context['data'],
-
             'tools' => $payload->requiredTools,
-
             'tool_configs' => $payload->toolConfigs,
-
             'history' => $payload->getTempValue('history') ?? [],
-
             'thinking_budget' => -1,
-
             'use_stream' => $this->supportsStreaming(),
-
-            'max_iterations' => $payload->context['agent_config']['provider'] == 'cloudflare' ? 15 : 7,
-
-            'use_memory_graph' => $payload->context['agent_config']['use_memory_graph'] ?? false,
-
+            'max_iterations' => $payload->context['agent_config']['provider'] === 'cloudflare' ? 15 : 7,
+            'use_memory_graph' => $useMemoryGraph,
         ];
-        
-        // Merge global_data into the root payload (for memory_graph access)
-        if (isset($payload->context['data']['global_data'])) {
-            $data = array_merge($data, $payload->context['data']['global_data']);
-        }
 
-        // if chat_session_data exists in $data['context'] remove it
-        // 1. Safe check: Ensure 'chat_session_data' exists without risking direct array access crashes
-        if (Arr::has($data, 'context.chat_session_data')) {
+        // // Safely merge global_data
+        // $globalData = $payload->context['data']['global_data'] ?? null;
+        // if (is_array($globalData)) {
+        //     $data = array_merge($data, $globalData);
+        // }
 
-            // 2. Safely get the history array (defaults to an empty array if missing)
-            $history = Arr::get($data, 'history');
+        // 2. OPTIMIZED CHAT SESSION LOGIC
+        if (isset($data['context']['chat_session_data'])) {
+            $history = $data['history'];
 
-            if (is_array($history) && !empty($history)) {
-                // 3. Safely grab the very last element of the array
-                $lastItem = Arr::last($history);
-
-                // 4. Extract the content string from that last element
-                $lastContent = Arr::get($lastItem, 'content');
+            if (!empty($history) && is_array($history)) {
+                // Native end() is faster than Arr::last()
+                $lastItem = end($history);
+                $lastContent = $lastItem['content'] ?? '';
 
                 if (is_string($lastContent) && $lastContent !== '') {
-                    $currentPrompt = is_string(Arr::get($data, 'userPrompt')) ? $data['userPrompt'] : '';
-
-                    // Pro Tip: Added a space delimiter so strings don't smash together
-                    $data['userPrompt'] = ($currentPrompt !== '' ? $currentPrompt . ' ' : '') . '# User ' . $lastContent;
+                    $currentPrompt = $data['userPrompt'] ?? '';
+                    $data['userPrompt'] = trim($currentPrompt . ' # User ' . $lastContent);
                 }
-
-                // Log::info("User Latest Message: ", ['data' => collect($data)->only('userPrompt', 'context', 'history')]);
             }
 
-            // Log::info("McpSidecarAdapter Data Payload: ", ['data' => $data]);
+            // CRITICAL FIX: Actually remove it to reduce network payload size
+            unset($data['context']['chat_session_data']);
         }
 
+        // // if chat_session_data exists in $data['context'] remove it
+        // // 1. Safe check: Ensure 'chat_session_data' exists without risking direct array access crashes
+        // if (Arr::has($data, 'context.chat_session_data')) {
 
+        //     // 2. Safely get the history array (defaults to an empty array if missing)
+        //     $history = Arr::get($data, 'history');
 
-        // Robust & Speedy filtering
+        //     if (is_array($history) && !empty($history)) {
+        //         // 3. Safely grab the very last element of the array
+        //         $lastItem = Arr::last($history);
+
+        //         // 4. Extract the content string from that last element
+        //         $lastContent = Arr::get($lastItem, 'content');
+
+        //         if (is_string($lastContent) && $lastContent !== '') {
+        //             $currentPrompt = is_string(Arr::get($data, 'userPrompt')) ? $data['userPrompt'] : '';
+
+        //             // Pro Tip: Added a space delimiter so strings don't smash together
+        //             $data['userPrompt'] = ($currentPrompt !== '' ? $currentPrompt . ' ' : '') . '# User ' . $lastContent;
+        //         }
+
+        //         // Log::info("User Latest Message: ", ['data' => collect($data)->only('userPrompt', 'context', 'history')]);
+        //     }
+
+        //     // Log::info("McpSidecarAdapter Data Payload: ", ['data' => $data]);
+        // }
+        /* ---------------------------------------- */
+
+        // 3. ENCODE & SIGN
         $jsonBody = json_encode(array_filter($data, fn($v) => $v !== null && $v !== '' && $v !== []));
 
-        // $signature = hash_hmac('sha256', $timestamp . $jsonBody, $this->client_secret);
+        $signature = create_valid_signature($this->client_secret, $timestamp, $jsonBody);
 
-        $appId = $this->client_app_id;
-        $secret = $this->client_secret;
-
-        $signature = create_valid_signature($secret, $timestamp, $jsonBody);
-
-        // 2. TRUE ASYNC HANDOFF (No .wait())
-
+        // 4. SYNCHRONOUS HANDOFF (Since you were waiting on the promise anyway)
         $promise = Http::async()
 
             ->withHeaders([
 
-                'X-App-Id' => $appId,
+                'X-App-Id' => $this->client_app_id,
 
                 'X-Signature' => $signature,
 
@@ -186,7 +180,7 @@ class McpSidecarAdapter implements LlmProviderInterface
             $promise->wait(true);
         } catch (\Throwable $e) {
             $message = "Sidecar connection failed: " . $e->getMessage();
-            
+
             if (method_exists($e, 'getResponse') && $e->getResponse()) {
                 $responseBody = $e->getResponse()->getBody()->getContents();
                 if (!empty($responseBody)) {

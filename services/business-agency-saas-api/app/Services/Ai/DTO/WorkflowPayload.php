@@ -76,15 +76,21 @@ class WorkflowPayload implements Arrayable
             $userQuery = $target->activities()->where('type', 'message_received')->latest()->first()?->content;
         }
 
+        $activeKnowledgeSourceIds = [];
+        if (config('services.mcp_sidecar.use_memory_graph', false)) {
+            $activeKnowledgeSourceIds = $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray();
+        }
+        $useMemoryGraph = count($activeKnowledgeSourceIds) > 0;
+
         $context_addition = [
             'global_data' => [
                 'tenant_id' => $target->tenant_id,
                 'tenant_name' => $target->tenant->name,
                 'target_id' => $target->getKey(),
-                'lead_id' => $target->getKey(),
-                'conversation_id' => ($session && $session->ai_chat_id) ? (string)$session->ai_chat_id : ($session?->getKey() ?? $target->getKey()),
+                'target_type' => strtolower(class_basename($target)),
+                'conversation_id' => ($session && $session->ai_chat_id) ? (string) $session->ai_chat_id : ($session?->getKey() ?? $target->getKey()),
                 'agent_id' => $agent->id,
-                'active_knowledge_source_ids' => $agent->knowledgeSources()->where('is_active', true)->pluck('tenant_knowledge_sources.id')->toArray(),
+                'active_knowledge_source_ids' => $activeKnowledgeSourceIds,
                 'user_query' => $userQuery,
                 'current_date_time' => $timeNowForAi
             ]
@@ -122,6 +128,7 @@ class WorkflowPayload implements Arrayable
         //     $goal = $agent->hydratePrompt($information);
         // }
 
+
         return new self(
             targetType: class_basename($target),
             targetId: $target->getKey(),
@@ -134,7 +141,7 @@ class WorkflowPayload implements Arrayable
                     'system_prompt' => $agent->system_prompt,
                     // SECURITY FIX: api_key is intentionally excluded here to prevent Queue Leakage.
                     // It will be injected Just-In-Time by the ProcessAgentWorkflowJob.
-                    'use_memory_graph' => config('services.mcp_sidecar.use_memory_graph', false),
+                    'use_memory_graph' => $useMemoryGraph,
                 ],
             ],
             goal: $goal,

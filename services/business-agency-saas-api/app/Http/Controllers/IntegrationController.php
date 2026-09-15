@@ -6,6 +6,7 @@ use App\Models\Integration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Log;
 
 class IntegrationController extends Controller
 {
@@ -18,12 +19,12 @@ class IntegrationController extends Controller
         // FIX: Get the raw array, do NOT wrap in response()->json() yet
         $integrations = config('ai_providers.services');
 
-        if (! $integrations || ! is_array($integrations)) {
+        if (!$integrations || !is_array($integrations)) {
             return response()->json([]);
         }
 
         $available = collect($integrations)
-            ->filter(fn ($s) => $s['enabled'] ?? false) // Safety check using ??
+            ->filter(fn($s) => $s['enabled'] ?? false) // Safety check using ??
             ->map(function ($details, $key) {
                 return [
                     'id' => $key,
@@ -47,6 +48,9 @@ class IntegrationController extends Controller
     {
         $tenantId = $request->user()->current_tenant_id; // Assuming auth structure
 
+        // Log::info("Integration::where('id', 14)->first()->value", [
+        //     'integration' => Integration::where('id', 14)->first()->value
+        // ]);
         return Integration::where('tenant_id', $tenantId)
             ->get()
             ->map(function ($integration) {
@@ -56,7 +60,7 @@ class IntegrationController extends Controller
 
                 foreach ($creds as $k => $v) {
                     // Show only first 4 chars for verification
-                    $maskedCreds[$k] = substr($v, 0, 4).'...';
+                    $maskedCreds[$k] = substr($v, 0, 4) . '...';
                 }
 
                 return [
@@ -120,7 +124,7 @@ class IntegrationController extends Controller
                 'service' => $request->service,
                 // If you support multiple keys per service, use $request->key.
                 // If one key per service, hardcode 'default'.
-                'key' => strtolower($request->service).'_key',
+                'key' => strtolower($request->service) . '_key',
             ],
             [
                 'value' => $request->value, // Casts to JSON automatically if model is set up
@@ -132,9 +136,9 @@ class IntegrationController extends Controller
         $creds = $integration->value ?? [];
         $maskedCreds = [];
         foreach ($creds as $k => $v) {
-            $maskedCreds[$k] = substr($v, 0, 4).'...';
+            $maskedCreds[$k] = substr($v, 0, 4) . '...';
         }
-        
+
         $entry = [
             'id' => $integration->id,
             'service' => $integration->service,
@@ -207,9 +211,9 @@ class IntegrationController extends Controller
         $creds = $integration->value ?? [];
         $maskedCreds = [];
         foreach ($creds as $k => $v) {
-            $maskedCreds[$k] = substr($v, 0, 4).'...';
+            $maskedCreds[$k] = substr($v, 0, 4) . '...';
         }
-        
+
         $entry = [
             'id' => $integration->id,
             'service' => $integration->service,

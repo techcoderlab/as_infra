@@ -1,3 +1,4 @@
+from email.policy import default
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -91,8 +92,12 @@ class Settings(BaseSettings):
     # Results with distance >= this value are considered irrelevant.
     MEMORY_RELEVANCE_THRESHOLD: float = Field(default=0.75, validation_alias="MEMORY_RELEVANCE_THRESHOLD")
     
-    # --- 8. Memory Graph Feature Flag ---
-    USE_MEMORY_GRAPH: bool = Field(default=False, validation_alias="USE_MEMORY_GRAPH")
+    # # --- 8. Memory Graph Feature Flag ---
+    # USE_MEMORY_GRAPH: bool = Field(default=False, validation_alias="USE_MEMORY_GRAPH")
+
+    CLOUDFLARE_API_KEY:str = Field(default="API_KEY", validation_alias="CLOUDFLARE_API_KEY")
+
+    
     
     class Config:
         env_file = ".env"

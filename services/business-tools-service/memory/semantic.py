@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import io
+import asyncio
 from typing import Optional
 
 from core.config import settings
@@ -267,7 +268,8 @@ async def ingest_document(
         return 0
 
     # Step 2: Embed (CPU-bound but batched for efficiency)
-    embeddings = get_embeddings(chunks)
+    # embeddings = get_embeddings(chunks)
+    embeddings = await asyncio.to_thread(get_embeddings, chunks)
 
     # Step 3: Batch insert
     pool = await get_pool()
@@ -326,21 +328,30 @@ async def search_memories(
     Raises:
         ValueError: If tenant_id is missing.
     """
-    # P2 Security: tenant_id is mandatory — zero-trust boundary
+    # ── P9/Reliability: hard type coercion at the boundary ──────────────────
+    # asyncpg is strictly typed and context/LLM values round-trip through JSON
+    # as strings. Coerce here so EVERY caller is safe, not just well-behaved ones.
     if not tenant_id:
         raise ValueError("tenant_id is required for memory search — zero-trust policy")
+    try:
+        tenant_id = int(str(tenant_id).strip())
+        top_k     = max(1, min(int(top_k), 50))          # hard ceiling at memory layer
+        active_source_ids = [int(str(s).strip()) for s in (active_source_ids or [])]
 
-    if not query or not query.strip():
+        # Cosine distance operator <=> returns values in [0, 2] range
+        # 0 = identical, 2 = opposite. Threshold filters irrelevant results.
+        threshold = float(settings.MEMORY_RELEVANCE_THRESHOLD)   # env-parsed strings guard
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid parameter type for memory search: {e}") from e
+
+    if not query or not str(query).strip():
         return ""
+    query = str(query)
 
     # Step 1: Embed the query
-    query_embedding = get_embeddings([query])[0]
+    query_embedding = (await asyncio.to_thread(get_embeddings, [query]))[0]
+    # query_embedding = get_embeddings([query])[0]
     query_vector_str = _format_vector(query_embedding)
-
-    # Step 2: Build the SQL with strict tenant isolation
-    # Cosine distance operator <=> returns values in [0, 2] range
-    # 0 = identical, 2 = opposite. Threshold filters irrelevant results.
-    threshold = settings.MEMORY_RELEVANCE_THRESHOLD
 
     pool = await get_pool()
 

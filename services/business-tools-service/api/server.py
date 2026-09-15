@@ -1,3 +1,5 @@
+from core.logger import mcp_logger
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -24,6 +26,9 @@ async def lifespan(app: FastAPI):
     logger.info("Starting API & initializing HTTP Singleton...")
     get_client() # This creates the connection pool once
     # generate_keypair()
+    from memory.semantic import _get_model          # forces load into THIS worker
+    await asyncio.to_thread(_get_model)
+    mcp_logger.info("[SemanticMemory] Embedding model pre-warmed")
     
     yield
     # Shutdown: Cleanly close the pool

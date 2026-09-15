@@ -53,7 +53,7 @@ async def get_raw_chat_turns(tenant_id: int, conversation_id: int, limit: int = 
     return turns
 
 
-async def summarize_conversation(tenant_id: int, conversation_id: int, lead_id: int) -> Optional[str]:
+async def summarize_conversation(tenant_id: int, conversation_id: int, target_id: int, target_type: str) -> Optional[str]:
     """
     Generates a progressive summary of the conversation up to the current turn, 
     avoiding restatement of permanent facts stored in episodic memory.
@@ -61,13 +61,14 @@ async def summarize_conversation(tenant_id: int, conversation_id: int, lead_id: 
     Parameters:
         tenant_id: Mandatory tenant scope.
         conversation_id: Mandatory conversation scope.
-        lead_id: Mandatory lead scope (for fetching episodic facts).
+        target_id: Mandatory target scope (for fetching episodic facts).
+        target_type: Mandatory target type (for fetching episodic facts).
         
     Returns:
         The generated summary text, or None if no new turns to summarize.
     """
-    if not tenant_id or not conversation_id or not lead_id:
-        raise ValueError("tenant_id, conversation_id, and lead_id are required")
+    if not tenant_id or not conversation_id or not target_id or not target_type:
+        raise ValueError("tenant_id, conversation_id, and target_id and target_type are required")
 
     pool = await get_pool()
     
@@ -104,7 +105,7 @@ async def summarize_conversation(tenant_id: int, conversation_id: int, lead_id: 
         newest_turn_id = new_turns[-1]["id"]
         
     # 3. Fetch active episodic facts for this lead
-    facts = await get_active_facts(tenant_id, lead_id)
+    facts = await get_active_facts(tenant_id, target_id, target_type)
     
     # 4. Formulate the LLM prompt
     previous_summary_text = latest_summary["summary_text"] if latest_summary else "No previous summary."

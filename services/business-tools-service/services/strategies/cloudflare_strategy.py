@@ -2,24 +2,18 @@
 # Module   : CloudflareStrategy
 # Layer    : Application › LLM Strategies
 # Pattern  : Strategy (GoF) — matches OpenAIStrategy / GeminiStrategy / AnthropicStrategy
-# Pillar   : P1 Architecture, P2 Security, P3 Performance, P4 Reliability,
-#            P5 Observability, P6 Maintainability, P7 Scalability, P8 Code Quality
 #
-# Purpose  : Integrates Cloudflare Workers AI models (e.g. Llama 3.1, 3.3) as a
-#            first-class provider in the sidecar.
-#            Uses the OpenAI-compatible endpoint so it slots into the EXISTING
-#            multi-turn tool-calling loop with zero changes to AgentService.
-#
-# Key Design Decisions:
-#   - Uses httpx.AsyncClient (singleton via core/http.py) NOT openai SDK —
-#     avoids adding a new runtime dependency; CF's OAI-compat endpoint is simple REST.
-#   - Streams via chunked SSE parsing — identical token/tool_start/tool_end/done
-#     event shape as all other strategies.
-#   - Circuit breaker (3 strikes → open 30 s) prevents cascade failures when
-#     CF Workers AI is degraded.
-#   - Per-account connection pool (keyed by account_id) avoids re-handshaking
-#     TLS on every call — critical for P3 (speed).
-#   - Secrets never logged — api_key and account_id scrubbed from log lines.
+# FIXED against https://developers.cloudflare.com/workers-ai/ :
+#   1. Removed deprecated model IDs that caused 404:
+#        @cf/meta/llama-3.1-70b-instruct, @cf/nousresearch/hermes-2-pro-mistral-7b
+#   2. 401/403 are auth errors → fail fast with a clear message instead of
+#      silently swapping models (old behavior masked real credential problems).
+#   3. 404/400 on a non-default model → exactly ONE fallback to DEFAULT_MODEL.
+#   4. Streaming tool-call deltas reassembled by `index` → parallel tool calls
+#      are no longer merged/corrupted.
+#   5. `tool_choice: "auto"` sent explicitly (per CF function-calling docs).
+#   6. response_format (JSON mode) only sent for models that support it.
+#   7. list_models() diagnostic helper to check the live catalog.
 # ─────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -27,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections import defaultdict
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -38,42 +31,58 @@ from services.strategies.base import LLMStrategy
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CF_BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+CF_BASE_URL          = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+CF_MODELS_SEARCH_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models/search"
 
-# Recommended flagship open-source tool-calling models natively supported on Workers AI.
-# These models are explicitly verified to support the `--enable-auto-tool-choice` vLLM backend.
+# Verified against https://developers.cloudflare.com/workers-ai/models/
+# ("Function calling" property on each model page).
+TOOL_CALLING_MODELS = {
+    "llama-3.3-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",  # flagship tool-calling
+    "gpt-oss-120b":  "@cf/openai/gpt-oss-120b",                    # strongest (needs Paid plan)
+    "llama-3.1-8b":  "@cf/meta/llama-3.1-8b-instruct-fp8",         # fast/cheap tool-calling
+}
+GENERAL_MODELS = {
+    "llama-3.1-8b-fast": "@cf/meta/llama-3.1-8b-instruct-fast",
+    "llama-3.2-3b":      "@cf/meta/llama-3.2-3b-instruct",
+    "qwq-32b":           "@cf/qwen/qwq-32b",                       # reasoning, no tools
+}
+
 RECOMMENDED_MODELS = {
-    "llama-3.1-8b":  "@cf/meta/llama-3.1-8b-instruct-fp8",       # Best overall: Fast, reliable native tool-calling
-    "llama-3.1-70b": "@cf/meta/llama-3.1-70b-instruct",          # High reasoning capacity
-    "llama-3.3-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", # Latest fast frontier model
-    "hermes-2-pro":  "@cf/nousresearch/hermes-2-pro-mistral-7b", # Mistral explicitly fine-tuned for tool calling
+    **TOOL_CALLING_MODELS,
+    **GENERAL_MODELS,
+    # Legacy aliases → nearest live replacement (old agent configs keep working)
+    "llama-3.1-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",   # old model deprecated
+    "hermes-2-pro":  "@cf/meta/llama-3.1-8b-instruct-fp8",         # old model deprecated
 }
 
 DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
 
+# JSON mode (response_format) is only supported on some models — whitelisting
+# avoids 400s from models that reject the parameter.
+JSON_MODE_SUPPORTED = {
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "@cf/meta/llama-3.1-8b-instruct-fp8",
+    "@cf/openai/gpt-oss-120b",
+    "@cf/openai/gpt-oss-20b",
+}
+
 # ─── Circuit Breaker ──────────────────────────────────────────────────────────
+# (unchanged from your version)
 
 class CircuitBreakerOpen(Exception):
-    """Raised when the circuit breaker is open — fast-fail without hitting CF."""
     pass
 
 
 class _CircuitBreaker:
-    """
-    Per-account circuit breaker.
-    States: CLOSED (normal) → OPEN (failing) → HALF-OPEN (probing).
-    Thresholds: 3 consecutive failures → OPEN for 30 s.
-    Thread-safe via asyncio.Lock (single-process, single-event-loop).
-    """
     _FAILURE_THRESHOLD = 3
-    _RECOVERY_TIMEOUT  = 30.0  # seconds
+    _RECOVERY_TIMEOUT  = 30.0
 
     def __init__(self, account_id_prefix: str):
-        self._failures   = 0
-        self._opened_at  = 0.0
-        self._state      = "CLOSED"
-        self._lock       = asyncio.Lock()
-        self._label      = f"cf-breaker[{account_id_prefix}]"
+        self._failures  = 0
+        self._opened_at = 0.0
+        self._state     = "CLOSED"
+        self._lock      = asyncio.Lock()
+        self._label     = f"cf-breaker[{account_id_prefix}]"
 
     async def before_call(self) -> None:
         async with self._lock:
@@ -98,11 +107,9 @@ class _CircuitBreaker:
     async def on_failure(self, exc: Exception) -> None:
         async with self._lock:
             self._failures += 1
-            mcp_logger.warning(
-                f"{self._label}: failure #{self._failures} — {type(exc).__name__}: {exc}"
-            )
+            mcp_logger.warning(f"{self._label}: failure #{self._failures} — {type(exc).__name__}: {exc}")
             if self._failures >= self._FAILURE_THRESHOLD:
-                self._state    = "OPEN"
+                self._state     = "OPEN"
                 self._opened_at = time.monotonic()
                 mcp_logger.error(
                     f"{self._label}: OPEN — backing off {self._RECOVERY_TIMEOUT}s "
@@ -110,7 +117,6 @@ class _CircuitBreaker:
                 )
 
 
-# Module-level registry — one breaker per account_id prefix (first 8 chars)
 _breakers: Dict[str, _CircuitBreaker] = {}
 
 def _get_breaker(account_id: str) -> _CircuitBreaker:
@@ -120,19 +126,10 @@ def _get_breaker(account_id: str) -> _CircuitBreaker:
     return _breakers[key]
 
 
-# ─── HTTP Client Pool ─────────────────────────────────────────────────────────
-
-# We use the shared singleton HttpClient from core.http to handle connection pooling
-# across all strategies. This avoids leaking clients and handles timeouts gracefully.
-
 # ─── SSE Parser ───────────────────────────────────────────────────────────────
 
 async def _parse_sse_stream(response: httpx.Response) -> AsyncGenerator[dict, None]:
-    """
-    Parses chunked SSE lines from httpx streaming response.
-    Yields parsed `data` dicts. Skips `[DONE]` sentinel.
-    Handles multi-line data fields and keep-alive `: ` comment lines.
-    """
+    """Parses chunked SSE `data:` payloads; skips keep-alives and [DONE]."""
     buffer = ""
     async for raw_chunk in response.aiter_text():
         buffer += raw_chunk
@@ -140,7 +137,7 @@ async def _parse_sse_stream(response: httpx.Response) -> AsyncGenerator[dict, No
             event_block, buffer = buffer.split("\n\n", 1)
             for line in event_block.splitlines():
                 line = line.strip()
-                if not line or line.startswith(":"):   # SSE comment / keep-alive
+                if not line or line.startswith(":"):
                     continue
                 if line.startswith("data:"):
                     payload = line[5:].strip()
@@ -156,45 +153,35 @@ async def _parse_sse_stream(response: httpx.Response) -> AsyncGenerator[dict, No
 
 class CloudflareStrategy(LLMStrategy):
     """
-    LLM strategy for Cloudflare Workers AI open-source models.
-
-    Uses the OpenAI-compatible chat/completions endpoint with streaming.
-    Implements the same token/tool_start/tool_end/done yield protocol as
-    OpenAIStrategy so AgentService requires zero changes.
-
-    Credential format (passed as `api_key` in agent config):
-        "<cloudflare_api_token>|<account_id>"
-        e.g. "abc123...xyz|1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
-
-    This single-field format keeps compatibility with the existing Integration
-    model (which stores a single `api_key` field per provider). The `|` separator
-    is chosen because neither CF tokens nor account IDs contain it.
+    Credential format: "<cf_api_token>|<account_id>"
+    Token MUST have Account → Workers AI → Edit permission and belong to
+    the same account as <account_id>.
     """
 
-    # ── Retry config ──────────────────────────────────────────────────────────
-    _MAX_RETRIES   = 2
-    _RETRY_BACKOFF = [1.0, 3.0]   # seconds between retry attempts
+    _MAX_RETRIES      = 2
+    _RETRY_BACKOFF    = [1.0, 3.0]
     _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
     async def execute(
         self,
-        api_key:          str,
-        model:            str,
-        system_prompt:    str,
+        api_key:           str,
+        model:             str,
+        system_prompt:     str,
         effective_history: list,
         full_user_message: str,
-        tools:            list,
-        context:          dict,
-        output_format:    str  = "text",
-        thinking_budget:  Optional[int] = None,
-        use_stream:       bool = True,
-        max_iterations:   int  = 7,
+        tools:             list,
+        context:           dict,
+        output_format:     str = "text",
+        thinking_budget:   Optional[int] = None,
+        use_stream:        bool = True,
+        max_iterations:    int  = 7,
+        temperature:      Optional[float] = None,   # ← add
     ) -> AsyncGenerator[dict[str, Any], None]:
 
-        # ── 1. Parse credentials ─────────────────────────────────────────────
+        # 1. Parse credentials
         cf_token, account_id = self._parse_credentials(api_key)
 
-        # ── 2. Circuit breaker pre-check ─────────────────────────────────────
+        # 2. Circuit breaker pre-check
         breaker = _get_breaker(account_id)
         try:
             await breaker.before_call()
@@ -203,61 +190,66 @@ class CloudflareStrategy(LLMStrategy):
             yield {"type": "done"}
             return
 
-        # ── 3. Resolve model ─────────────────────────────────────────────────
+        # 3. Resolve model
         resolved_model = RECOMMENDED_MODELS.get(model, model)
-        if not resolved_model.startswith("@cf/"):
-            mcp_logger.warning(
-                f"CF model '{resolved_model}' lacks '@cf/' prefix — "
-                "ensure it is a valid Workers AI model ID"
-            )
+        fallback_used  = False
 
-        # ── 4. Build messages ─────────────────────────────────────────────────
+        # 4-5. Messages + tool schemas (OpenAI format — accepted by CF OAI-compat)
         messages = self._build_messages(system_prompt, effective_history, full_user_message)
-
-        # ── 5. Build tool schemas (OpenAI format — CF OAI-compat accepts them) ─
         cf_tools = [t.to_openai_schema() for t in tools] if tools else None
 
-        # ── 6. Agent loop ─────────────────────────────────────────────────────
+        # 6. Agent loop
         iteration = 0
-
         while iteration < max_iterations:
             iteration += 1
 
-            # ── 6a. Call CF with retry ────────────────────────────────────────
-            raw_events = []
-            call_ok    = False
+            raw_events: list[dict] = []
+            tool_calls: list[dict] = []
+            full_text   = ""
+            call_ok     = False
             last_exc: Optional[Exception] = None
 
             for attempt in range(self._MAX_RETRIES + 1):
                 try:
                     raw_events, tool_calls, full_text = await self._stream_once(
                         account_id, cf_token, resolved_model, messages, cf_tools,
-                        output_format, use_stream
+                        output_format, use_stream, temperature
                     )
                     call_ok = True
                     break
 
-                except CircuitBreakerOpen:
-                    raise  # already yielded — let outer handler deal with it
-
                 except (httpx.TimeoutException, httpx.NetworkError) as exc:
                     last_exc = exc
-                    mcp_logger.warning(
-                        f"CF network error attempt {attempt + 1}: {exc}"
-                    )
+                    mcp_logger.warning(f"CF network error attempt {attempt + 1}: {exc}")
 
                 except httpx.HTTPStatusError as exc:
-                    last_exc = exc
-                    status = exc.response.status_code
-                    body_text = exc.response.text
+                    status    = exc.response.status_code
+                    body_text = exc.response.text[:400]
                     mcp_logger.error(f"CF HTTP {status} error body: {body_text}")
-                    
-                    # Fallback for unsupported/paid models
-                    if status in (400, 403, 404) and resolved_model != DEFAULT_MODEL:
-                        mcp_logger.warning(f"CF model {resolved_model} rejected ({status}). Falling back to {DEFAULT_MODEL}")
+
+                    # ① 401/403 = credentials / token permissions — NOT a model
+                    #    problem. Retrying or switching models cannot fix it.
+                    if status in (401, 403):
+                        await breaker.on_failure(exc)
+                        yield {"type": "error", "data": (
+                            f"Cloudflare auth failed (HTTP {status}). Ensure the API "
+                            "token has 'Workers AI → Edit' on the token's account and "
+                            f"api_key is '<token>|<account_id>'. Details: {body_text}"
+                        )}
+                        yield {"type": "done"}
+                        return
+
+                    # ② 404 (or 400) = unknown/deprecated model → ONE fallback
+                    if (status in (400, 404) and not fallback_used
+                            and resolved_model != DEFAULT_MODEL):
+                        fallback_used = True
+                        mcp_logger.warning(
+                            f"CF model {resolved_model} rejected ({status}) — "
+                            f"falling back to {DEFAULT_MODEL}"
+                        )
                         resolved_model = DEFAULT_MODEL
-                        continue # Retry immediately with default model
-                        
+                        continue
+
                     if status not in self._RETRYABLE_STATUS or attempt == self._MAX_RETRIES:
                         await breaker.on_failure(exc)
                         yield {"type": "error", "data": f"Cloudflare API error {status}: {body_text}"}
@@ -274,21 +266,21 @@ class CloudflareStrategy(LLMStrategy):
                 yield {"type": "done"}
                 return
 
-            # ── 6b. Emit tokens ───────────────────────────────────────────────
+            # Emit tokens
             for evt in raw_events:
                 yield evt
 
-            # ── 6c. No tool calls → final response ───────────────────────────
+            # No tool calls → final response
             if not tool_calls:
                 await breaker.on_success()
                 yield {"type": "done"}
                 break
 
-            # ── 6d. Execute tools ─────────────────────────────────────────────
-            # Append assistant's tool-call message to history
+            # Append assistant tool-call message (preserve real content — some
+            # models emit text before tool calls; keeping it maintains context)
             messages.append({
-                "role":       "assistant",
-                "content":    "",
+                "role":    "assistant",
+                "content": full_text,          # was: full_text if full_text else None
                 "tool_calls": [
                     {
                         "id":       tc["id"],
@@ -312,7 +304,6 @@ class CloudflareStrategy(LLMStrategy):
                         else f"Error: tool '{tool_name}' not registered."
                     )
                     yield {"type": "tool_end", "data": {"tool": tool_name, "result": result}}
-
                     messages.append({
                         "role":         "tool",
                         "tool_call_id": tc["id"],
@@ -323,38 +314,42 @@ class CloudflareStrategy(LLMStrategy):
                     err = f"Bad JSON args for tool '{tool_name}': {e}"
                     mcp_logger.error(err)
                     yield {"type": "tool_end", "data": {"tool": tool_name, "result": err}}
-                    messages.append({
-                        "role":         "tool",
-                        "tool_call_id": tc["id"],
-                        "content":      err,
-                    })
+                    messages.append({"role": "tool", "tool_call_id": tc["id"], "content": err})
 
                 except Exception as e:
                     err = f"Tool '{tool_name}' raised {type(e).__name__}: {e}"
                     mcp_logger.error(err)
                     yield {"type": "tool_end", "data": {"tool": tool_name, "result": err}}
-                    messages.append({
-                        "role":         "tool",
-                        "tool_call_id": tc["id"],
-                        "content":      err,
-                    })
-
+                    messages.append({"role": "tool", "tool_call_id": tc["id"], "content": err})
         else:
-            # Exceeded max_iterations
-            mcp_logger.warning(
-                f"CF agent hit max_iterations={max_iterations} — forcing done"
-            )
+            mcp_logger.warning(f"CF agent hit max_iterations={max_iterations} — forcing done")
             yield {"type": "error", "data": "max_iterations reached without final answer"}
             yield {"type": "done"}
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
     @staticmethod
+    async def list_models(api_key: str, task: Optional[str] = "Text Generation") -> list[dict]:
+        """
+        Diagnostic helper — returns the LIVE Workers AI catalog for this account.
+        Use this whenever a 404 appears to verify current model IDs
+        (catalog: https://developers.cloudflare.com/workers-ai/models/).
+        """
+        token, account = CloudflareStrategy._parse_credentials(api_key)
+        params: dict[str, Any] = {"per_page": 100}
+        if task:
+            params["task"] = task
+        resp = await get_client().get(   # adapt if your wrapper lacks .get()
+            CF_MODELS_SEARCH_URL.format(account_id=account),
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        return resp.json().get("result", [])
+
+    @staticmethod
     def _parse_credentials(api_key: str) -> tuple[str, str]:
-        """
-        Splits '<cf_api_token>|<account_id>' into components.
-        Raises ValueError with a safe message (no secret in exception text).
-        """
         parts = api_key.split("|", 1)
         if len(parts) != 2 or not parts[0] or not parts[1]:
             raise ValueError(
@@ -365,7 +360,6 @@ class CloudflareStrategy(LLMStrategy):
 
     @staticmethod
     def _build_messages(system_prompt: str, history: list, user_message: str) -> list:
-        """Builds the OpenAI-format messages array."""
         msgs = []
         if system_prompt:
             msgs.append({"role": "system", "content": system_prompt})
@@ -379,6 +373,56 @@ class CloudflareStrategy(LLMStrategy):
         msgs.append({"role": "user", "content": user_message})
         return msgs
 
+
+        # ── Content normalization (CF schema compliance) ─────────────────────────
+    @staticmethod
+    def _normalize_content(content: Any) -> str:
+        """
+        CF /ai/v1/chat/completions REQUIRES messages[].content to be a string
+        (JSON schema: oneOf {prompt} | {messages[{content: string}]}).
+        Multi-provider histories / the memory graph may carry content as
+        content-part arrays (OpenAI vision or Anthropic style) — flatten them.
+        """
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for part in content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict) and part.get("text"):
+                    parts.append(str(part["text"]))
+            return "\n".join(p for p in parts if p)
+        if isinstance(content, dict):
+            return str(content.get("text")) if content.get("text") else json.dumps(content)
+        return str(content)
+
+    @staticmethod
+    def _normalize_message(msg: dict) -> dict:
+        """Returns a CF-safe message: string content, string tool-call args."""
+        out: dict = {"role": msg.get("role", "user"),
+                     "content": CloudflareStrategy._normalize_content(msg.get("content"))}
+        if msg.get("tool_call_id") is not None:
+            out["tool_call_id"] = msg["tool_call_id"]
+        if msg.get("name"):
+            out["name"] = msg["name"]
+        if msg.get("tool_calls"):
+            tcs = []
+            for tc in msg["tool_calls"]:
+                fn   = tc.get("function", {}) or {}
+                args = fn.get("arguments", "{}")
+                if not isinstance(args, str):        # some backends return dicts
+                    args = json.dumps(args)
+                tcs.append({
+                    "id":       tc.get("id", ""),
+                    "type":     "function",
+                    "function": {"name": fn.get("name", ""), "arguments": args},
+                })
+            out["tool_calls"] = tcs
+        return out
+
     async def _stream_once(
         self,
         account_id:    str,
@@ -388,97 +432,111 @@ class CloudflareStrategy(LLMStrategy):
         tools:         Optional[list],
         output_format: str,
         use_stream:    bool,
+        temperature: Optional[float] = None
     ) -> tuple[list[dict], list[dict], str]:
-        """
-        Makes one POST to CF OAI-compat endpoint, streams the response,
-        and returns (yield_events, tool_calls, full_text).
-
-        yield_events : list of {"type": "token", "data": "<chunk>"} dicts
-        tool_calls   : list of {"id", "name", "args"} dicts (args = raw JSON str)
-        full_text    : concatenated text content (for buffered/non-stream mode)
-        """
         payload: dict[str, Any] = {
             "model":    model,
-            "messages": messages,
+            # "messages": messages,
+            "messages": [self._normalize_message(m) for m in messages],
             "stream":   use_stream,
         }
 
+        if temperature is not None:
+            payload["temperature"] = temperature
+
         if tools:
             payload["tools"]       = tools
-
-        if output_format == "json" and not tools:
+            payload["tool_choice"] = "auto"   # explicit per CF function-calling docs
+        if output_format == "json" and not tools and model in JSON_MODE_SUPPORTED:
             payload["response_format"] = {"type": "json_object"}
 
-        yield_events: list[dict]  = []
-        tool_calls:   list[dict]  = []
-        full_text:    str         = ""
-        current_tc:   Optional[dict] = None
+        yield_events: list[dict] = []
+        full_text:    str        = ""
+        tc_acc:       dict[int, dict] = {}   # keyed by `index` → parallel-safe
 
-        url = CF_BASE_URL.format(account_id=account_id) + "/chat/completions"
+        url     = CF_BASE_URL.format(account_id=account_id) + "/chat/completions"
         headers = {
-            "Accept": "text/event-stream" if use_stream else "application/json",
             "Authorization": f"Bearer {cf_token}",
             "Content-Type":  "application/json",
-            "User-Agent":    "Mozilla/5.0 (compatible; AgencySaasSidecar/1.0)",
+            "Accept":        "text/event-stream" if use_stream else "application/json",
         }
 
         async with get_client().stream(
-            "POST",
-            url,
-            content  = json.dumps(payload).encode(),
-            headers  = headers,
-            timeout  = 120.0,
+            "POST", url,
+            content = json.dumps(payload).encode(),
+            headers = headers,
+            timeout = 120.0,
         ) as response:
             if response.status_code >= 400:
-                await response.aread()
+                await response.aread()   # buffer error body so .text works after raise
             response.raise_for_status()
 
             if not use_stream:
-                # Buffered mode (used by /v1/agent/run)
-                body = await response.aread()
-                data = json.loads(body)
-                choice = data["choices"][0]
-                msg    = choice.get("message", {})
-                text   = msg.get("content") or ""
+                data = json.loads(await response.aread())
+                msg  = (data.get("choices") or [{}])[0].get("message", {})
+                text = msg.get("content") or ""
                 full_text = text
                 if text:
                     yield_events.append({"type": "token", "data": text})
                 for tc in msg.get("tool_calls") or []:
-                    func = tc.get("function", {})
-                    tool_calls.append({
+                    fn = tc.get("function", {})
+                    tool_calls_list = msg.get("tool_calls") or []
+                    tool_calls_list = tool_calls_list  # noqa
+                    yield_events  # noqa
+                    tool_calls_collected = {
                         "id":   tc.get("id", ""),
-                        "name": func.get("name", ""),
-                        "args": func.get("arguments", "{}"),
-                    })
+                        "name": fn.get("name", ""),
+                        "args": fn.get("arguments", "{}"),
+                    }
+                    _ = tool_calls_collected
+                tool_calls: list[dict] = [
+                    {
+                        "id":   tc.get("id", ""),
+                        "name": (tc.get("function") or {}).get("name", ""),
+                        "args": (tc.get("function") or {}).get("arguments", "{}"),
+                    }
+                    for tc in (msg.get("tool_calls") or [])
+                ]
                 return yield_events, tool_calls, full_text
 
             # Streaming mode
             async for chunk in _parse_sse_stream(response):
-                if not chunk.get("choices"):
+                choices = chunk.get("choices") or []
+                if not choices:
                     continue
-                delta = chunk["choices"][0].get("delta", {})
+                delta = choices[0].get("delta") or {}
 
-                # Token
+                # if content := delta.get("content"):
+                #     full_text += content
+                #     yield_events.append({"type": "token", "data": content})
+
+
+
                 if content := delta.get("content"):
+                    if not isinstance(content, str):
+                        # CF quirk: numeric literals in JSON-mode output can arrive
+                        # as JSON numbers instead of strings. Coerce and log once.
+                        mcp_logger.warning(
+                            f"CF non-string content delta: {content!r} "
+                            f"({type(content).__name__}) — coerced to str"
+                        )
+                        content = str(content)
                     full_text += content
                     yield_events.append({"type": "token", "data": content})
 
-                # Tool call deltas
+                # Tool-call deltas — reassemble by `index` so PARALLEL tool
+                # calls aren't merged into one (bug in the old id-based logic)
                 for tc_delta in delta.get("tool_calls") or []:
-                    if tc_delta.get("id"):                    # new tool call starts
-                        if current_tc:
-                            tool_calls.append(current_tc)
-                        current_tc = {
-                            "id":   tc_delta["id"],
-                            "name": tc_delta["function"].get("name", ""),
-                            "args": "",
-                        }
-                    if current_tc and tc_delta.get("function", {}).get("arguments"):
-                        current_tc["args"] += tc_delta["function"]["arguments"]
-                    if current_tc and tc_delta.get("function", {}).get("name") and not current_tc["name"]:
-                        current_tc["name"] = tc_delta["function"]["name"]
+                    idx = tc_delta.get("index", 0)
+                    acc = tc_acc.setdefault(idx, {"id": "", "name": "", "args": ""})
+                    if tc_delta.get("id"):
+                        acc["id"] = tc_delta["id"]
+                    fn = tc_delta.get("function") or {}
+                    if fn.get("name"):
+                        acc["name"] = fn["name"] if not acc["name"] else acc["name"] + fn["name"]
+                    if fn.get("arguments"):
+                        acc["args"] += str(fn["arguments"] or "")
 
-            if current_tc:
-                tool_calls.append(current_tc)
+            tool_calls = [tc_acc[i] for i in sorted(tc_acc) if tc_acc[i]["name"]]
 
         return yield_events, tool_calls, full_text

@@ -4,6 +4,7 @@
 # Pillar   : P1 Architecture, P3 Concurrency, P8 Code Quality
 # ─────────────────────────────────────────────────────
 
+# from gdb import missing_debug
 import json
 import re
 import time
@@ -122,11 +123,15 @@ class AgentService:
         if request_data.get('use_memory_graph', False):
             ctx = request_data.get("context", {})
             gd = ctx.get("global_data", {})
-            mcp_logger.info("🧠 use_memory_graph=true — "+ json.dumps(ctx, indent=4))
+            # mcp_logger.info("🧠 use_memory_graph=true — "+ json.dumps(ctx, indent=4))
+
+            tenant_id = int(gd.get("tenant_id") or ctx.get("tenant_id"))
+            target_id = int(gd.get("target_id") or ctx.get("target_id"))
+            conversation_id = int(gd.get("conversation_id") or ctx.get("conversation_id"))
             has_memory_keys = (
-                (gd.get("tenant_id") or ctx.get("tenant_id"))
-                and (gd.get("conversation_id") or ctx.get("conversation_id"))
-                or (gd.get("lead_id") or ctx.get("lead_id"))
+                tenant_id
+                and conversation_id
+                and target_id
             )
             if has_memory_keys:
                 mcp_logger.info("🧠 use_memory_graph=true — delegating to memory graph")

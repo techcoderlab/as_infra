@@ -135,6 +135,7 @@ class AiGateway
             'use_stream' => true,
             'thinking_budget' => -1,
             'use_memory_graph' => $context['agent_config']['use_memory_graph'] ?? false,
+            'output_format' => 'text'
         ];
 
 

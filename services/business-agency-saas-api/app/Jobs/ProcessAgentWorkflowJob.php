@@ -135,21 +135,28 @@ class ProcessAgentWorkflowJob implements ShouldQueue
         $context = $this->payload->context;
         $context['agent_config']['api_key'] = $agent->integration->value['api_key'];
 
+        // Determine if we should fetch chat history
+        $hasActiveKnowledgeSources = false;
+        if (config('services.mcp_sidecar.use_memory_graph', false)) {
+            $hasActiveKnowledgeSources = $agent->knowledgeSources()->where('is_active', true)->exists();
+        }
+
+        // Preparing Chat History for the LLM
         $history = [];
-        if (!empty($agent->context_window_size)) {
+        if (!$hasActiveKnowledgeSources && !empty($agent->context_window_size)) {
             // Unified history from chat_messages via AiChat
             $aiChat = \App\Models\AiChat::where('tenant_id', $this->tenantId)
                 ->where('target_type', strtolower($this->payload->targetType))
                 ->where('target_id', $this->payload->targetId)
                 ->first();
-            
+
             if ($aiChat) {
                 $messages = \App\Models\ChatMessage::where('ai_chat_id', $aiChat->id)
                     ->orderByDesc('id')
                     ->take((int) $agent->context_window_size)
                     ->get()
                     ->reverse();
-                
+
                 foreach ($messages as $message) {
                     $role = $message->role === 'user' ? 'user' : 'assistant';
                     $history[] = ['role' => $role, 'content' => $message->content];

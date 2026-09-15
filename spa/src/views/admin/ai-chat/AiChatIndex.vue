@@ -21,65 +21,56 @@
         :key="chat.id"
         class="card p-6 flex flex-col h-full hover:shadow-md transition-shadow"
       >
-        <template v-for="agent in [agentSlugs.find(a => a.id === chat.ai_agent_id)]" :key="chat.id + '-status'">
+        <!-- 1. Safe Variable mapping using our computed agentMap -->
         <div class="flex justify-between items-center mb-4">
           <div class="flex items-center gap-3">
-            <!-- If avatar_url is present, show it, otherwise show the first letter of the name -->
-            <div
-              class="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-            >
-              <span v-if="chat.avatar_url"
-                ><img :src="chat.avatar_url" class="w-full h-full rounded-full"
-              /></span>
-              <span v-else>{{ chat.name[0] }}</span>
+            <div class="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              <span v-if="chat.avatar_url">
+                <img :src="chat.avatar_url" class="w-full h-full rounded-full" />
+              </span>
+              <!-- Defensive protection against missing names -->
+              <span v-else>{{ chat?.name ? chat.name[0] : 'C' }}</span>
             </div>
             <div>
               <h3 class="font-bold text-slate-900 dark:text-white">{{ chat.name }}</h3>
             </div>
           </div>
 
-        <!-- We use a single-item v-for array to mock a local variable assignment -->
-        
+          <!-- Active Indicator -->
           <span class="relative flex h-4 w-4 flex-shrink-0">
             <span
-              v-if="agent?.is_active"
+              v-if="agentMap[chat.ai_agent_id]?.is_active"
               class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
             ></span>
             <span
               :class="[
                 'relative inline-flex rounded-full h-4 w-4',
-                agent?.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                agentMap[chat.ai_agent_id]?.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
               ]"
-              :title="agent?.is_active ? 'Active' : 'Inactive'"
+              :title="agentMap[chat.ai_agent_id]?.is_active ? 'Active' : 'Inactive'"
             ></span>
           </span>
-
-          
         </div>
+
         <div class="flex-1 mb-6">
-          <label class="form-label mt-2">Agent</label>
-          <div
-            class="text-xs font-mono bg-slate-50 dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-800 break-all"
-          >
-            {{
-              chat.webhook_url ||
-              agent?.slug + (!agent?.is_active ? " is temporarily deactivated" : "")
-            }}
+          <label class="form-label mt-2">Details</label>
+          <div class="text-xs font-mono bg-slate-50 dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-800 break-all">
+              <p v-html="getChatStatusText(chat)"></p>
           </div>
         </div>
 
         <div class="flex gap-2 mt-auto">
-
-          
           <router-link 
-            :to="agent?.is_active ? `/admin/ai-chats/${chat.id}` : ''" 
+            :to="chat.webhook_url || agentMap[chat.ai_agent_id]?.is_active ? `/admin/ai-chats/${chat.id}` : ''" 
             class="btn-primary flex-1 text-center transition-all"
-            :class="{ 'opacity-50 cursor-not-allowed pointer-events-none select-none': !agent?.is_active }"
+            :class="{ 'opacity-50 cursor-not-allowed pointer-events-none select-none': (!chat.webhook_url && !agentMap[chat.ai_agent_id]?.is_active) || chat.target_type !== 'user' }"
           >
             Open Chat
           </router-link>
 
-          <button @click="openModal(chat)" class="btn-icon">
+          <button @click="openModal(chat)" class="btn-icon"
+            :class="{ 'opacity-50 cursor-not-allowed pointer-events-none select-none': (!chat.webhook_url && !agentMap[chat.ai_agent_id]?.is_active) || chat.target_type !== 'user' }"
+          >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 stroke-linecap="round"
@@ -89,7 +80,9 @@
               ></path>
             </svg>
           </button>
-          <button @click="deleteChat(chat.id)" class="btn-icon text-red-500 hover:bg-red-50">
+          <button @click="deleteChat(chat.id)" class="btn-icon text-red-500 hover:bg-red-50"
+            :class="{ 'opacity-50 cursor-not-allowed pointer-events-none select-none': (!chat.webhook_url && !agentMap[chat.ai_agent_id]?.is_active) || chat.target_type !== 'user' }"
+          >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 stroke-linecap="round"
@@ -100,9 +93,8 @@
             </svg>
           </button>
         </div>
-        </template>
-
       </div>
+
     </div>
 
     <Transition name="modal">
@@ -178,14 +170,16 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import request from '@/utils/request'
-import { useApiCache } from '@/composables/useApiCache'
+import { useAuthStore } from '../../../stores/auth'
 
 const chats = ref([])
+const agentSlugs = ref([]) // Keeps fallback template loop happy
 const showModal = ref(false)
 const isEditing = ref(false)
 const search = ref('')
-const statuses = ref({})
+
 const form = ref({
+  id: null,
   name: '',
   webhook_url: '',
   webhook_secret: '',
@@ -193,63 +187,91 @@ const form = ref({
   ai_agent_id: null,
   use_webhook: false,
 })
-const { fetchDataWithCache } = useApiCache()
 
-// Scaffolding for future DB fetch
-const agentSlugs = ref([])
-// const agentSlugs = ref([
-//   { label: 'Customer Support Agent', value: 'customer-support' },
-//   { label: 'Sales Assistant', value: 'sales-assistant' },
-//   { label: 'Technical Helper', value: 'tech-helper' },
-// ])
+const auth = useAuthStore()
 
-const filteredChats = computed(() =>
-  !search.value
-    ? chats.value
-    : chats.value.filter((c) => c.name.toLowerCase().includes(search.value.toLowerCase())),
-)
-onMounted(loadChats)
+// Create a safe, reactive lookup map for agents to avoid template crashes
+const agentMap = computed(() => {
+  const map = {}
+  if (Array.isArray(agentSlugs.value)) {
+    agentSlugs.value.forEach(agent => {
+      if (agent && agent.id) {
+        map[agent.id] = agent
+      }
+    })
+  }
+  return map
+})
 
 async function loadChats() {
   try {
-    const result = await fetchDataWithCache('ai_chats', () =>
-      Promise.all([request.get('/ai-chats')]),
-    )
-    const { data } = result[0]
+    const response = await request.get('/ai-chats',{
+      params: { target_type:'user' ,target_id:auth.user?.id },
+    })
+    
+    // Safely extract from your Laravel index object response structure
+    chats.value = response.data?.chats || []
+    agentSlugs.value = response.data?.agents || []
+  } catch (e) {
+    console.error('Failed to load chats:', e)
+    chats.value = []
+    agentSlugs.value = []
+  }
+}
 
-    if (data) {
-      chats.value = data.chats.filter((c) => c.target_type === null || c.target_type === "")
-      agentSlugs.value = data.agents
+async function deleteChat(id) {
+  if (!confirm('Are you sure you want to delete this chat?')) return
+  try {
+    await request.delete(`/ai-chats/${id}`)
+    await loadChats() // Refreshes state perfectly
+  } catch (e) {
+    alert('Failed to delete chat')
+  }
+}
 
-      // console.log(`Chats: ${JSON.stringify(chats.value, null, 2)}`)
+async function saveChat() {
+  try {
+    const payload = { ...form.value }
+    const useWebhook = payload.use_webhook
+    delete payload.use_webhook 
+
+    if (useWebhook) {
+      payload.ai_agent_id = null
+    } else {
+      payload.webhook_url = null
+      payload.webhook_secret = null
     }
 
-    // console.log(data.agents)
+    // payload.target_type = 'user'
+    // payload.target_id = auth.user?.id
 
-    // const { data } = await request.get('/ai-chats')
-    // chats.value = data.chats
-    // agentSlugs.value = data.agents
-
-    // chats.value.forEach(async (c) => {
-    //   try {
-    //     const { data } = await request.get(`/ai-chats/${c.id}/status`)
-    //     statuses.value[c.id] = data.status
-    //   } catch {
-    //     statuses.value[c.id] = 'inactive'
-    //   }
-    // })
-  } catch (e) {}
+    isEditing.value
+      ? await request.put(`/ai-chats/${form.value.id}`, payload)
+      : await request.post('/ai-chats', payload)
+      
+    showModal.value = false
+    await loadChats()
+  } catch (e) {
+    alert('Failed to save')
+  }
 }
-function openModal(c = null) {
-  isEditing.value = !!c
-  if (c) {
+
+function openModal(chat = null) {
+  if (chat) {
+    isEditing.value = true
     form.value = {
-      ...c,
-      use_webhook: !!c.webhook_url, // Infer from existing data
-      ai_agent_id: c.ai_agent_id || '',
+      id: chat.id,
+      name: chat.name,
+      webhook_url: chat.webhook_url,
+      webhook_secret: chat.webhook_secret,
+      welcome_message: chat.welcome_message,
+      ai_agent_id: chat.ai_agent_id,
+      use_webhook: !!chat.webhook_url,
     }
   } else {
+    isEditing.value = false
     form.value = {
+      id: null,
       name: '',
       webhook_url: '',
       webhook_secret: '',
@@ -260,32 +282,31 @@ function openModal(c = null) {
   }
   showModal.value = true
 }
-async function saveChat() {
-  try {
-    const payload = { ...form.value }
-    // Clean up payload based on mode
-    if (payload.use_webhook) {
-      payload.ai_agent_id = null
-    } else {
-      payload.webhook_url = null
-      payload.webhook_secret = null
-    }
-    // Remove temporary UI flag before sending if backend doesn't accept it
-    // delete payload.use_webhook
 
-    isEditing.value
-      ? await request.put(`/ai-chats/${form.value.id}`, payload)
-      : await request.post('/ai-chats', payload)
-    showModal.value = false
-    loadChats()
-  } catch (e) {
-    alert('Failed')
+const filteredChats = computed(() => {
+  if (!search.value) return chats.value
+  return chats.value.filter(chat => 
+    chat.name?.toLowerCase().includes(search.value.toLowerCase())
+  )
+})
+
+function getChatStatusText(chat) {
+
+  let agentStr = chat?.webhook_url || 'No agent attached'
+  if (chat?.ai_agent_id) {
+    const agent = agentMap.value[chat.ai_agent_id]
+    const slug = (agent?.slug || 'Unknown') + ' agent'
+    agentStr = agent?.is_active ? slug : `${slug} is inactive`
   }
+
+  const platform = toTitleCase(chat?.platform) || 'Unknown Platform'
+  const targetId = chat?.target_id || 'Unknown'
+  const targetType = toTitleCase(chat?.target_type) || 'Unknown'
+  return `${agentStr}<br>${platform}: Chat of ${targetType} #${targetId}`
 }
-async function deleteChat(id) {
-  if (confirm('Delete?')) {
-    await request.delete(`/ai-chats/${id}`)
-    loadChats()
-  }
-}
+
+
+onMounted(async () => {
+  await loadChats()
+})
 </script>
