@@ -116,6 +116,7 @@ async def agent_enqueue(request: Request, background_tasks: BackgroundTasks):
     try:
         enqueue_request = AgentEnqueueRequest(**body)
     except Exception as e:
+        mcp_logger.error(f"Agent Enqueue Error: {str(e)} | Body: {json.dumps(body, indent=2)}")
         return JSONResponse(status_code=422, content={
             "status": "rejected",
             "error": str(e)
