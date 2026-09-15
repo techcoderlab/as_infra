@@ -116,11 +116,14 @@ async def agent_enqueue(request: Request, background_tasks: BackgroundTasks):
     try:
         enqueue_request = AgentEnqueueRequest(**body)
     except Exception as e:
-        mcp_logger.error(f"Agent Enqueue Error: {str(e)} | Body: {json.dumps(body, indent=2)}")
+        mcp_logger.error(f"Agent Enqueue Error: {str(e)}")
         return JSONResponse(status_code=422, content={
             "status": "rejected",
             "error": str(e)
         })
+
+    # Log the full request body for debugging
+    mcp_logger.info(f"[AgentEnqueue] Request: {json.dumps(enqueue_request.model_dump(), indent=2)}")
 
     # Resolve callback config: new 'callback' object OR legacy 'webhook_url'
     if enqueue_request.callback:
