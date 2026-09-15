@@ -38,7 +38,7 @@ class LeadMessageResultHandler implements WorkflowResultHandler
         try {
             // 2. Parse AI Response
             $rawJson = $result['response'] ?? '{}';
-            Log::info('Raw WhatsApp AI Response: ' . json_encode($result));
+            // Log::info('Raw WhatsApp AI Response: ' . json_encode($result));
             // Assuming clean_and_decode_json is a robust global helper available in the project
             $parsedData = clean_and_decode_json($rawJson);
             $thoughtStream = $result['thoughtStream'] ?? [];

@@ -86,7 +86,7 @@ class LeadController extends Controller
             \App\Jobs\CalculateTenantStatsJob::dispatchSync($tenantId); // Forces immediate execution
             $data = Cache::get($cacheKey); // Fetch the freshly generated data
 
-            Log::info("Dashboard Stats Generated Synchronously: " . json_encode($data, JSON_PRETTY_PRINT));
+            // Log::info("Dashboard Stats Generated Synchronously: " . json_encode($data, JSON_PRETTY_PRINT));
 
             // Absolute fallback (just in case the job somehow fails or there are 0 leads in the DB)
             if (!$data) {

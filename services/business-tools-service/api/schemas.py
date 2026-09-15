@@ -95,6 +95,7 @@ class AgentEnqueueRequest(BaseModel):
         description="Max thinking tokens for 2.5 thinking models. 0=disable, None=model default.",
         ge=-1, le=24576
     )
+    use_memory_graph: Optional[bool] = Field(default=False, description="Use memory graph for background tasks")
 
     class Config:
         populate_by_name = True  # Accept both alias and field name
